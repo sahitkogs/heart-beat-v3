@@ -66,7 +66,7 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
     }
 
     _handled = true;
-    final repo = await ref.read(contactsRepositoryProvider.future);
+    final repo = ref.read(contactsRepositoryProvider);
     await repo.add(Contact(pubkeyHex: result.pubkeyHex!, addedAt: DateTime.now()));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

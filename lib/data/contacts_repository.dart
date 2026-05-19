@@ -1,43 +1,31 @@
-import 'dart:convert';
+import 'package:drift/drift.dart';
 
-import 'package:shared_preferences/shared_preferences.dart';
+import 'app_database.dart';
+import 'models/contact.dart' as model;
 
-import 'models/contact.dart';
-
-/// Persists the user's scanned-contacts list in SharedPreferences.
-/// Phase 10.1 only — moves to a drift table in Phase 10.2 when we need
-/// to associate contacts with chats and message history.
+/// Persists scanned contacts in the drift SQLite database. Public API
+/// identical to the Phase 10.1 SharedPreferences-backed version, with one
+/// breaking change: construction is now plain (DI via Riverpod) — the
+/// `static Future<ContactsRepository> create()` factory is gone.
 class ContactsRepository {
-  ContactsRepository._(this._prefs);
+  ContactsRepository(this._db);
 
-  static const String _key = 'hb_v3_contacts';
+  final AppDatabase _db;
 
-  final SharedPreferences _prefs;
-
-  /// Async constructor required because SharedPreferences.getInstance() is async.
-  static Future<ContactsRepository> create() async {
-    final prefs = await SharedPreferences.getInstance();
-    return ContactsRepository._(prefs);
-  }
-
-  Future<List<Contact>> loadAll() async {
-    final raw = _prefs.getString(_key);
-    if (raw == null) return const [];
-    final list = jsonDecode(raw) as List<dynamic>;
-    return list
-        .map((e) => Contact.fromJson(e as Map<String, dynamic>))
+  Future<List<model.Contact>> loadAll() async {
+    final rows = await _db.select(_db.contacts).get();
+    return rows
+        .map((r) => model.Contact(pubkeyHex: r.pubkeyHex, addedAt: r.addedAt))
         .toList();
   }
 
-  Future<void> add(Contact c) async {
-    final current = await loadAll();
-    if (current.any((e) => e.pubkeyHex == c.pubkeyHex)) {
-      return; // idempotent
-    }
-    final updated = [...current, c];
-    await _prefs.setString(
-      _key,
-      jsonEncode(updated.map((e) => e.toJson()).toList()),
-    );
+  Future<void> add(model.Contact c) async {
+    await _db.into(_db.contacts).insert(
+          ContactsCompanion.insert(
+            pubkeyHex: c.pubkeyHex,
+            addedAt: c.addedAt,
+          ),
+          mode: InsertMode.insertOrIgnore, // idempotent on pubkeyHex
+        );
   }
 }
