@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../data/models/contact.dart';
 import 'contacts_provider.dart';
@@ -16,9 +17,40 @@ class AddContactScreen extends ConsumerStatefulWidget {
 class _AddContactScreenState extends ConsumerState<AddContactScreen> {
   bool _handled = false;
   String? _statusMessage;
+  String? _permissionError;
+  late final MobileScannerController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = MobileScannerController();
+    _controller.barcodes.listen((capture) {
+      _onDetect(capture);
+    });
+    // Listen to controller state changes to detect permission-denied errors.
+    // MobileScannerController.start() catches MobileScannerException internally
+    // and stores it in value.error rather than re-throwing, so we observe via
+    // the ValueNotifier listener instead of catchError.
+    _controller.addListener(_onControllerStateChanged);
+    _controller.start();
+  }
+
+  void _onControllerStateChanged() {
+    final error = _controller.value.error;
+    if (error != null && mounted) {
+      setState(() => _permissionError = error.toString());
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onControllerStateChanged);
+    _controller.dispose();
+    super.dispose();
+  }
 
   Future<void> _onDetect(BarcodeCapture capture) async {
-    if (_handled) return; // first detection wins
+    if (_handled) return;
     final raw = capture.barcodes
         .map((b) => b.rawValue)
         .whereType<String>()
@@ -45,11 +77,41 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_permissionError != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Add contact')),
+        body: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.no_photography, size: 64),
+              const SizedBox(height: 16),
+              const Text(
+                'Camera access is required to scan a contact QR.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _permissionError!,
+                style: Theme.of(context).textTheme.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: () => openAppSettings(),
+                child: const Text('Open app settings'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('Add contact')),
       body: Stack(
         children: [
-          MobileScanner(onDetect: _onDetect),
+          MobileScanner(controller: _controller),
           if (_statusMessage != null)
             Positioned(
               left: 16,
