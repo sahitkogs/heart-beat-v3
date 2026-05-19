@@ -49,5 +49,21 @@ void main() {
       final second = await svc.loadOrCreate();
       expect(second.publicKeyHex, isNot(equals(first.publicKeyHex)));
     });
+
+    test('loadOrCreate throws FormatException when stored seed is not hex', () async {
+      final storage = _MemoryStorage();
+      // Pre-seed storage with a clearly-invalid value
+      await storage.write('hb_v3_private_key', 'not-a-hex-string');
+      final svc = IdentityService(KeyStorage(storage));
+      await expectLater(svc.loadOrCreate(), throwsFormatException);
+    });
+
+    test('loadOrCreate throws when stored seed is wrong length', () async {
+      final storage = _MemoryStorage();
+      // 32 hex chars = 16 bytes; Ed25519 requires 32 bytes (64 hex)
+      await storage.write('hb_v3_private_key', 'aa' * 16);
+      final svc = IdentityService(KeyStorage(storage));
+      await expectLater(svc.loadOrCreate(), throwsA(isA<ArgumentError>()));
+    });
   });
 }
