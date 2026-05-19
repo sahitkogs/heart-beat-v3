@@ -24,20 +24,18 @@ void main() {
     test('loadOrCreate generates new keypair when none stored', () async {
       final svc = IdentityService(KeyStorage(_MemoryStorage()));
       final identity = await svc.loadOrCreate();
-      expect(identity.publicKeyHex.length, 64); // 32 bytes pub = 64 hex chars
-      expect(identity.privateKeyHex.length, 64); // 32 bytes seed = 64 hex chars
+      expect(identity.publicKeyHex.length, 64);
     });
 
-    test('loadOrCreate returns same keypair on subsequent calls', () async {
+    test('loadOrCreate returns same public key on subsequent calls', () async {
       final storage = _MemoryStorage();
       final svc = IdentityService(KeyStorage(storage));
       final first = await svc.loadOrCreate();
       final second = await svc.loadOrCreate();
       expect(second.publicKeyHex, first.publicKeyHex);
-      expect(second.privateKeyHex, first.privateKeyHex);
     });
 
-    test('two different storages produce different keypairs', () async {
+    test('two different storages produce different public keys', () async {
       final a = await IdentityService(KeyStorage(_MemoryStorage())).loadOrCreate();
       final b = await IdentityService(KeyStorage(_MemoryStorage())).loadOrCreate();
       expect(a.publicKeyHex, isNot(equals(b.publicKeyHex)));

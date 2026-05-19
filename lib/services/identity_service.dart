@@ -3,19 +3,15 @@ import 'package:cryptography/cryptography.dart';
 import '../core/hex_codec.dart';
 import 'key_storage.dart';
 
-/// The user's identity in v3 — an Ed25519 keypair.
+/// The user's public identity. Never carries the private seed.
 class Identity {
-  const Identity({required this.publicKeyHex, required this.privateKeyHex});
-
-  /// Lowercase hex of the 32-byte public key. 64 chars.
+  const Identity({required this.publicKeyHex});
   final String publicKeyHex;
-
-  /// Lowercase hex of the 32-byte Ed25519 seed (private material). 64 chars.
-  final String privateKeyHex;
 }
 
 /// Generates the user's Ed25519 keypair on first launch and reloads it
-/// thereafter from secure storage.
+/// thereafter from secure storage. Returns only the public key in [Identity];
+/// the seed stays inside [KeyStorage] and is reached only by [SigningService].
 class IdentityService {
   IdentityService(this._keys);
 
@@ -25,28 +21,18 @@ class IdentityService {
   Future<Identity> loadOrCreate() async {
     final existing = await _keys.readPrivateKey();
     if (existing != null) {
-      return _reconstructFromSeedHex(existing);
+      final seed = hexToBytes(existing);
+      final pair = await _algo.newKeyPairFromSeed(seed);
+      final pub = await pair.extractPublicKey();
+      return Identity(publicKeyHex: bytesToHex(pub.bytes));
     }
-    final keyPair = await _algo.newKeyPair();
-    final seedBytes = await keyPair.extractPrivateKeyBytes();
-    final publicKey = await keyPair.extractPublicKey();
-    final identity = Identity(
-      publicKeyHex: bytesToHex(publicKey.bytes),
-      privateKeyHex: bytesToHex(seedBytes),
-    );
-    await _keys.writePrivateKey(identity.privateKeyHex);
-    return identity;
+    final pair = await _algo.newKeyPair();
+    final seedBytes = await pair.extractPrivateKeyBytes();
+    final pub = await pair.extractPublicKey();
+    final seedHex = bytesToHex(seedBytes);
+    await _keys.writePrivateKey(seedHex);
+    return Identity(publicKeyHex: bytesToHex(pub.bytes));
   }
 
   Future<void> reset() => _keys.deletePrivateKey();
-
-  Future<Identity> _reconstructFromSeedHex(String seedHex) async {
-    final seedBytes = hexToBytes(seedHex);
-    final keyPair = await _algo.newKeyPairFromSeed(seedBytes);
-    final publicKey = await keyPair.extractPublicKey();
-    return Identity(
-      publicKeyHex: bytesToHex(publicKey.bytes),
-      privateKeyHex: seedHex,
-    );
-  }
 }
