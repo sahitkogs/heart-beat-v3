@@ -28,44 +28,46 @@ class _IdentityBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            'Show this to someone you want to chat with. They scan it from their Add Contact screen.',
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          Center(
-            child: QrImageView(
-              data: pubkeyHex,
-              version: QrVersions.auto,
-              size: 260,
-              backgroundColor: Colors.white,
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Show this to someone you want to chat with. They scan it from their Add Contact screen.',
+              textAlign: TextAlign.center,
             ),
-          ),
-          const SizedBox(height: 24),
-          SelectableText(
-            pubkeyHex,
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          OutlinedButton.icon(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: pubkeyHex));
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Copied to clipboard')),
-                );
-              }
-            },
-            icon: const Icon(Icons.copy),
-            label: const Text('Copy hex'),
-          ),
-        ],
+            const SizedBox(height: 24),
+            Center(
+              child: QrImageView(
+                data: pubkeyHex,
+                version: QrVersions.auto,
+                size: 260,
+                backgroundColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 24),
+            SelectableText(
+              pubkeyHex,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: pubkeyHex));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Copied to clipboard')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.copy),
+              label: const Text('Copy hex'),
+            ),
+          ],
+        ),
       ),
     );
   }
