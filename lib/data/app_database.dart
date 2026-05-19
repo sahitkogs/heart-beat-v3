@@ -15,7 +15,38 @@ class Contacts extends Table {
   Set<Column> get primaryKey => {pubkeyHex};
 }
 
-@DriftDatabase(tables: [Contacts])
+class Chats extends Table {
+  TextColumn get peerPubkeyHex => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get lastMessageAt => dateTime().nullable()();
+  TextColumn get lastMessagePreview => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {peerPubkeyHex};
+}
+
+class Messages extends Table {
+  TextColumn get id => text()();
+  TextColumn get chatId => text()();                // == peerPubkeyHex
+  TextColumn get senderPubkeyHex => text()();
+  TextColumn get body => text()();
+  IntColumn get lamport => integer()();
+  DateTimeColumn get sentAt => dateTime()();
+  DateTimeColumn get receivedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+class LamportSeq extends Table {
+  TextColumn get chatId => text()();                // == peerPubkeyHex
+  IntColumn get value => integer()();
+
+  @override
+  Set<Column> get primaryKey => {chatId};
+}
+
+@DriftDatabase(tables: [Contacts, Chats, Messages, LamportSeq])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
@@ -23,7 +54,19 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          if (from == 1 && to == 2) {
+            await m.createTable(chats);
+            await m.createTable(messages);
+            await m.createTable(lamportSeq);
+          }
+        },
+      );
 }
 
 LazyDatabase _openConnection() {
