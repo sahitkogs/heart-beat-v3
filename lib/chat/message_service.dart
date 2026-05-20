@@ -9,6 +9,7 @@ import '../data/chats_dao.dart';
 import '../relay/relay_client.dart';
 import '../relay/relay_frames.dart';
 import '../services/crypto_service.dart';
+import '../services/wake_client.dart';
 import 'pre_key_bootstrap.dart';
 
 /// Orchestrates the encrypt → send → persist and receive → decrypt → persist
@@ -19,6 +20,7 @@ class MessageService {
     required this.relay,
     required this.dao,
     required this.myPubkeyHex,
+    this.wake,
   }) {
     _sub = relay.inbound.listen(_onInbound);
   }
@@ -27,6 +29,10 @@ class MessageService {
   final RelayClient relay;
   final ChatsDao dao;
   final String myPubkeyHex;
+  // Optional in tests; production wiring always supplies one via the
+  // messageServiceProvider. When null, recipient_offline errors are logged
+  // but no wake fallback fires.
+  final WakeClient? wake;
 
   late final StreamSubscription<RelayFrame> _sub;
   static const _uuid = Uuid();
@@ -40,6 +46,13 @@ class MessageService {
   // Only the pending-outbound queue stays in-memory — it's session-scoped and
   // drains the moment the peer's bundle arrives.
   final Map<String, List<String>> _pendingByPeer = <String, List<String>>{};
+
+  // Envelopes (message ones only, NOT bundles) that we've handed to the
+  // relay but haven't proven made it to the peer. On a `recipient_offline`
+  // error for a peer, we pop the oldest unacked envelope for that peer and
+  // hand it to WakeClient.wake so the server can FCM-bridge it. Cleared for
+  // a peer the moment we receive *any* inbound from them (proves online).
+  final Map<String, List<List<int>>> _unackedByPeer = <String, List<List<int>>>{};
 
   /// Called when a chat thread is opened so both sides exchange bundles even
   /// before the first user-typed message. Idempotent.
@@ -111,15 +124,60 @@ class MessageService {
       peerPubkeyHex: peerPubkeyHex,
       plaintext: plaintext,
     );
+    final envelope = EnvelopeWire.wrapMessage(ciphertext);
+    (_unackedByPeer[peerPubkeyHex] ??= <List<int>>[]).add(envelope);
     await relay.send(
       toPubkeyHex: peerPubkeyHex,
-      envelope: EnvelopeWire.wrapMessage(ciphertext),
+      envelope: envelope,
     );
   }
 
   void _onInbound(RelayFrame frame) {
     if (frame is DeliverFrame) {
+      // Any inbound proves the peer is online; clear pending wake queue.
+      _unackedByPeer.remove(frame.fromPubkeyHex);
       _handleDeliver(frame);
+    } else if (frame is ErrorFrame) {
+      _handleError(frame);
+    }
+  }
+
+  Future<void> _handleError(ErrorFrame frame) async {
+    if (frame.code != 'recipient_offline' || frame.toPubkeyHex == null) {
+      _log('inbound error code=${frame.code} msg=${frame.message} (no wake)');
+      return;
+    }
+    final peer = frame.toPubkeyHex!;
+    final queue = _unackedByPeer[peer];
+    if (queue == null || queue.isEmpty) {
+      _log('wake_skipped no_in_flight peer=${_short(peer)} '
+          '(bundle send or peer already came back online)');
+      return;
+    }
+    final envelope = queue.removeAt(0);
+    if (queue.isEmpty) _unackedByPeer.remove(peer);
+
+    final wakeClient = wake;
+    if (wakeClient == null) {
+      _log('wake_unconfigured peer=${_short(peer)} envBytes=${envelope.length}');
+      return;
+    }
+    _log('wake_dispatching peer=${_short(peer)} envBytes=${envelope.length}');
+    final result = await wakeClient.wake(
+      recipientPubkeyHex: peer,
+      envelope: envelope,
+    );
+    switch (result.status) {
+      case WakeStatus.ok:
+        _log('wake_dispatched peer=${_short(peer)}');
+      case WakeStatus.recipientNotRegistered:
+        _log('wake_failed_no_phonebook peer=${_short(peer)}');
+      case WakeStatus.fcmError:
+        _log('wake_failed_fcm peer=${_short(peer)} detail=${result.detail}');
+      case WakeStatus.networkError:
+        _log('wake_failed_network peer=${_short(peer)} detail=${result.detail}');
+      case WakeStatus.serverError:
+        _log('wake_failed_server peer=${_short(peer)} detail=${result.detail}');
     }
   }
 

@@ -11,6 +11,7 @@ import 'package:app_v3/relay/relay_frames.dart';
 import 'package:app_v3/services/crypto_pre_key_bundle.dart';
 import 'package:app_v3/services/crypto_service.dart';
 import 'package:app_v3/services/signing_service.dart';
+import 'package:app_v3/services/wake_client.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -52,6 +53,29 @@ class _FakeRelay implements RelayClient {
 
   @override
   SigningService get signing => throw UnimplementedError();
+}
+
+class _FakeWakeClient extends WakeClient {
+  _FakeWakeClient(this._respond)
+      : super(baseUri: Uri.parse('http://wake.test'));
+
+  final WakeResult Function() _respond;
+  final List<_WakeCall> calls = [];
+
+  @override
+  Future<WakeResult> wake({
+    required String recipientPubkeyHex,
+    required List<int> envelope,
+  }) async {
+    calls.add(_WakeCall(recipientPubkeyHex, envelope));
+    return _respond();
+  }
+}
+
+class _WakeCall {
+  _WakeCall(this.peer, this.envelope);
+  final String peer;
+  final List<int> envelope;
 }
 
 class _FakeCrypto implements CryptoService {
@@ -300,6 +324,132 @@ void main() {
     final chats = await dao.watchChats().first;
     expect(chats.length, 1);
     expect(chats.first.peerPubkeyHex, peerPub);
+  });
+
+  group('wake fallback on recipient_offline (T6)', () {
+    late _FakeWakeClient wake;
+    late MessageService wakeService;
+
+    Future<void> setUpWith(WakeResult Function() respond) async {
+      // Tear down the default setUp's service first so we can attach a wake.
+      await service.dispose();
+      wake = _FakeWakeClient(respond);
+      wakeService = MessageService(
+        crypto: crypto,
+        relay: relay,
+        dao: dao,
+        myPubkeyHex: myPub,
+        wake: wake,
+      );
+      // After this point any inbound from `relay` flows through wakeService.
+    }
+
+    tearDown(() async {
+      await wakeService.dispose();
+    });
+
+    /// Drive the bootstrap so a libsignal "session" exists from the
+    /// FakeCrypto perspective and the next sendText goes through
+    /// _encryptAndSend (i.e. pushes onto _unackedByPeer).
+    Future<void> bootstrap() async {
+      relay.emit(DeliverFrame(
+        fromPubkeyHex: peerPub,
+        envelope: EnvelopeWire.wrapPreKeyBundle(peerBundle()),
+      ));
+      await drainMicrotasks();
+    }
+
+    test('happy path: recipient_offline triggers wake with the queued envelope',
+        () async {
+      await setUpWith(() => const WakeResult(WakeStatus.ok));
+      await bootstrap();
+
+      await wakeService.sendText(peerPubkeyHex: peerPub, body: 'while offline');
+      final sentMessage = relay.sent
+          .lastWhere((f) => f.envelope.first == EnvelopeTag.message)
+          .envelope;
+
+      // Server says peer is offline AFTER the message was already handed off.
+      relay.emit(ErrorFrame(
+        code: 'recipient_offline',
+        message: '',
+        toPubkeyHex: peerPub,
+      ));
+      await drainMicrotasks();
+
+      expect(wake.calls, hasLength(1));
+      expect(wake.calls.single.peer, peerPub);
+      expect(wake.calls.single.envelope, sentMessage,
+          reason: 'wake should carry the original encrypted envelope so the '
+              'background isolate can decrypt it cold');
+    });
+
+    test('no in-flight envelope: bundle-send recipient_offline is logged, '
+        'no wake call', () async {
+      await setUpWith(() => const WakeResult(WakeStatus.ok));
+      // openChat sends OUR bundle (NOT pushed to _unackedByPeer).
+      await wakeService.openChat(peerPub);
+      // Server reports the bundle send hit an offline peer.
+      relay.emit(ErrorFrame(
+        code: 'recipient_offline',
+        message: '',
+        toPubkeyHex: peerPub,
+      ));
+      await drainMicrotasks();
+
+      expect(wake.calls, isEmpty,
+          reason: 'bundles do not get wake-fallback — only message envelopes');
+    });
+
+    test('FCM error: wake is still dispatched once (status surfaced via logs)',
+        () async {
+      await setUpWith(() => const WakeResult(
+            WakeStatus.fcmError,
+            detail: 'FCM unavailable',
+          ));
+      await bootstrap();
+      await wakeService.sendText(peerPubkeyHex: peerPub, body: 'errored');
+
+      relay.emit(ErrorFrame(
+        code: 'recipient_offline',
+        message: '',
+        toPubkeyHex: peerPub,
+      ));
+      await drainMicrotasks();
+
+      expect(wake.calls, hasLength(1));
+      // No retry, no exception — failure is logged structurally and the
+      // message stays in Alice's DB. (See "Known limitations carried into
+      // Phase 10.4+" in the roadmap.)
+    });
+
+    test('inbound from peer clears the wake queue (peer is online again)',
+        () async {
+      await setUpWith(() => const WakeResult(WakeStatus.ok));
+      await bootstrap();
+      await wakeService.sendText(peerPubkeyHex: peerPub, body: 'stale1');
+      await wakeService.sendText(peerPubkeyHex: peerPub, body: 'stale2');
+
+      // Peer replies — proves online.
+      relay.emit(DeliverFrame(
+        fromPubkeyHex: peerPub,
+        envelope: EnvelopeWire.wrapMessage(
+          [0xCC, ...utf8.encode('back online')],
+        ),
+      ));
+      await drainMicrotasks();
+
+      // After the reply, a late `recipient_offline` for the peer should
+      // find an empty queue and not dispatch any wake.
+      relay.emit(ErrorFrame(
+        code: 'recipient_offline',
+        message: '',
+        toPubkeyHex: peerPub,
+      ));
+      await drainMicrotasks();
+
+      expect(wake.calls, isEmpty);
+    });
   });
 
   group('bundle-exchange state persists across restart (T3.4)', () {

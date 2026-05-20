@@ -5,8 +5,10 @@ import '../../chat/message_service.dart';
 import '../../relay/relay_client.dart';
 import '../../services/crypto_service.dart';
 import '../../services/libsignal_crypto_service.dart';
+import '../../services/wake_client.dart';
 import '../contacts/contacts_provider.dart';
 import '../identity/identity_provider.dart';
+import '../notifications/fcm_provider.dart';
 
 const String relayWsUrl = 'ws://34.42.231.29:8080/v1/signal';
 
@@ -28,16 +30,24 @@ final relayClientProvider = FutureProvider<RelayClient>((ref) async {
   return client;
 });
 
+final wakeClientProvider = Provider<WakeClient>((ref) {
+  final client = WakeClient(baseUri: Uri.parse(relayHttpBaseUrl));
+  ref.onDispose(() => client.dispose());
+  return client;
+});
+
 final messageServiceProvider = FutureProvider<MessageService>((ref) async {
   final crypto = await ref.watch(cryptoServiceProvider.future);
   final relay = await ref.watch(relayClientProvider.future);
   final dao = ref.watch(chatsDaoProvider);
   final identity = await ref.watch(identityProvider.future);
+  final wake = ref.watch(wakeClientProvider);
   final svc = MessageService(
     crypto: crypto,
     relay: relay,
     dao: dao,
     myPubkeyHex: identity.publicKeyHex,
+    wake: wake,
   );
   ref.onDispose(() => svc.dispose());
   return svc;
