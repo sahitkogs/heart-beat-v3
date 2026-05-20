@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 /// Wraps `flutter_local_notifications`. Initialization is idempotent and safe
 /// to call from both the main isolate (T1.4 / T8) and the FCM background
@@ -48,5 +49,24 @@ class NotificationsService {
     }
 
     _initialized = true;
+  }
+
+  /// Asks the OS for POST_NOTIFICATIONS on Android 13+. No-op on older
+  /// Android (status is auto-granted). Returns true if granted, false if
+  /// denied or permanently denied — callers should not block on the result;
+  /// the only consequence of denial is that the user won't see banners.
+  Future<bool> requestPermission() async {
+    if (!Platform.isAndroid) return true;
+    final status = await Permission.notification.status;
+    if (status.isGranted) return true;
+    if (status.isPermanentlyDenied) {
+      // ignore: avoid_print
+      print('[Notifications] permission permanently denied; skipping request');
+      return false;
+    }
+    final result = await Permission.notification.request();
+    // ignore: avoid_print
+    print('[Notifications] permission request result: $result');
+    return result.isGranted;
   }
 }

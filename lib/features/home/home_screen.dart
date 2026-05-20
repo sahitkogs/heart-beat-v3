@@ -1,15 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../services/notifications_service.dart';
 import '../chat/chat_list_screen.dart';
 import '../contacts/contacts_screen.dart';
 import '../identity/identity_screen.dart';
 
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Trigger the POST_NOTIFICATIONS permission prompt after the first frame
+    // so the OS dialog overlays a rendered UI, not a blank pre-runApp screen.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      NotificationsService.instance.requestPermission();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Heartbeat')),
       body: Center(
