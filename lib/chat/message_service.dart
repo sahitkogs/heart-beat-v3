@@ -12,8 +12,7 @@ import '../services/crypto_service.dart';
 import 'pre_key_bootstrap.dart';
 
 /// Orchestrates the encrypt → send → persist and receive → decrypt → persist
-/// flows. Constructed once per app session by the messageServiceProvider
-/// (Task 22).
+/// flows. Constructed once per app session by the messageServiceProvider.
 class MessageService {
   MessageService({
     required this.crypto,
@@ -32,38 +31,48 @@ class MessageService {
   late final StreamSubscription<RelayFrame> _sub;
   static const _uuid = Uuid();
 
-  /// Track per-peer "have we sent a PreKey bundle yet in this app session?".
-  /// Reset on app restart; that's fine — sending a bundle a second time is
-  /// also fine (libsignal idempotently advances the existing session).
+  // Per-peer state needed for the chicken-and-egg bootstrap: libsignal cannot
+  // encrypt to a peer until that peer's PreKey bundle has been processed, so
+  // we must wait until we receive it before sending the first message.
   final Set<String> _bundleSentTo = <String>{};
+  final Set<String> _peerBundleReceived = <String>{};
+  final Map<String, List<String>> _pendingByPeer = <String, List<String>>{};
+
+  /// Called when a chat thread is opened so both sides exchange bundles even
+  /// before the first user-typed message. Idempotent.
+  Future<void> openChat(String peerPubkeyHex) async {
+    await dao.ensureChat(peerPubkeyHex);
+    await _maybeSendOwnBundle(peerPubkeyHex);
+  }
 
   Future<void> sendText({
     required String peerPubkeyHex,
     required String body,
   }) async {
     await dao.ensureChat(peerPubkeyHex);
+    await _maybeSendOwnBundle(peerPubkeyHex);
+    await _persistOutbound(peerPubkeyHex, body);
 
-    if (!_bundleSentTo.contains(peerPubkeyHex)) {
-      final myBundle = await crypto.myPreKeyBundle();
-      final stamped = myBundle.copyWithOwner(myPubkeyHex);
-      await relay.send(
-        toPubkeyHex: peerPubkeyHex,
-        envelope: EnvelopeWire.wrapPreKeyBundle(stamped),
-      );
-      _bundleSentTo.add(peerPubkeyHex);
+    if (!_peerBundleReceived.contains(peerPubkeyHex)) {
+      (_pendingByPeer[peerPubkeyHex] ??= <String>[]).add(body);
+      return;
     }
+    await _encryptAndSend(peerPubkeyHex, body);
+  }
 
-    final lamport = await dao.bumpLamport(peerPubkeyHex);
-    final plaintext = utf8.encode(body);
-    final ciphertext = await crypto.encrypt(
-      peerPubkeyHex: peerPubkeyHex,
-      plaintext: plaintext,
-    );
+  Future<void> _maybeSendOwnBundle(String peerPubkeyHex) async {
+    if (_bundleSentTo.contains(peerPubkeyHex)) return;
+    final myBundle = await crypto.myPreKeyBundle();
+    final stamped = myBundle.copyWithOwner(myPubkeyHex);
     await relay.send(
       toPubkeyHex: peerPubkeyHex,
-      envelope: EnvelopeWire.wrapMessage(ciphertext),
+      envelope: EnvelopeWire.wrapPreKeyBundle(stamped),
     );
+    _bundleSentTo.add(peerPubkeyHex);
+  }
 
+  Future<void> _persistOutbound(String peerPubkeyHex, String body) async {
+    final lamport = await dao.bumpLamport(peerPubkeyHex);
     final now = DateTime.now();
     await dao.insertMessage(MessagesCompanion.insert(
       id: _uuid.v4(),
@@ -76,12 +85,22 @@ class MessageService {
     await dao.updateLastMessage(peerPubkeyHex, _preview(body), now);
   }
 
+  Future<void> _encryptAndSend(String peerPubkeyHex, String body) async {
+    final plaintext = utf8.encode(body);
+    final ciphertext = await crypto.encrypt(
+      peerPubkeyHex: peerPubkeyHex,
+      plaintext: plaintext,
+    );
+    await relay.send(
+      toPubkeyHex: peerPubkeyHex,
+      envelope: EnvelopeWire.wrapMessage(ciphertext),
+    );
+  }
+
   void _onInbound(RelayFrame frame) {
     if (frame is DeliverFrame) {
-      // Fire-and-forget; errors are caught inside _handleDeliver.
       _handleDeliver(frame);
     }
-    // Other frame types (error, online_status, pong) are not yet acted upon.
   }
 
   Future<void> _handleDeliver(DeliverFrame frame) async {
@@ -90,11 +109,25 @@ class MessageService {
     try {
       parsed = EnvelopeWire.parse(frame.envelope);
     } on FormatException {
-      return; // Drop malformed envelopes silently
+      return;
     }
 
     if (parsed.isBundle) {
       await crypto.processPeerPreKeyBundle(parsed.bundle!);
+      _peerBundleReceived.add(frame.fromPubkeyHex);
+      // Make sure the peer also has our bundle so they can encrypt back.
+      await _maybeSendOwnBundle(frame.fromPubkeyHex);
+      // Drain anything that was queued while we waited.
+      final pending = _pendingByPeer.remove(frame.fromPubkeyHex);
+      if (pending != null) {
+        for (final body in pending) {
+          try {
+            await _encryptAndSend(frame.fromPubkeyHex, body);
+          } catch (_) {
+            // Drop on the floor for now; future phase: retry / surface to UI.
+          }
+        }
+      }
       return;
     }
 
@@ -105,12 +138,10 @@ class MessageService {
         ciphertext: parsed.ciphertext!,
       );
     } catch (_) {
-      return; // libsignal decrypt errors: drop the frame
+      return;
     }
     final body = utf8.decode(plaintext);
 
-    // Phase 10.2 uses a local Lamport bump on receive too; the remote's
-    // Lamport isn't carried on the wire yet (future-phase protocol extension).
     final lamport = await dao.bumpLamport(frame.fromPubkeyHex);
     final now = DateTime.now();
     await dao.insertMessage(MessagesCompanion.insert(

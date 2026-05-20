@@ -7,18 +7,34 @@ import 'composer.dart';
 import 'message_bubble.dart';
 import 'message_service_provider.dart';
 
-class ChatThreadScreen extends ConsumerWidget {
+class ChatThreadScreen extends ConsumerStatefulWidget {
   const ChatThreadScreen({super.key, required this.peerPubkeyHex});
 
   final String peerPubkeyHex;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ChatThreadScreen> createState() => _ChatThreadScreenState();
+}
+
+class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
+  bool _openInvoked = false;
+
+  @override
+  Widget build(BuildContext context) {
     final me = ref.watch(identityProvider).valueOrNull?.publicKeyHex ?? '';
-    final messagesAsync = ref.watch(chatThreadProvider(peerPubkeyHex));
+    final messagesAsync = ref.watch(chatThreadProvider(widget.peerPubkeyHex));
     final messageSvcAsync = ref.watch(messageServiceProvider);
 
-    final pk = peerPubkeyHex;
+    // Once the MessageService resolves, kick off a one-shot openChat() so
+    // both sides exchange PreKey bundles even before the user types.
+    messageSvcAsync.whenData((svc) {
+      if (!_openInvoked) {
+        _openInvoked = true;
+        svc.openChat(widget.peerPubkeyHex);
+      }
+    });
+
+    final pk = widget.peerPubkeyHex;
     final title = pk.length >= 16
         ? '${pk.substring(0, 8)}…${pk.substring(pk.length - 8)}'
         : pk;
@@ -76,8 +92,10 @@ class ChatThreadScreen extends ConsumerWidget {
               ),
             ),
             data: (svc) => Composer(
-              onSend: (text) =>
-                  svc.sendText(peerPubkeyHex: peerPubkeyHex, body: text),
+              onSend: (text) => svc.sendText(
+                peerPubkeyHex: widget.peerPubkeyHex,
+                body: text,
+              ),
             ),
           ),
         ],

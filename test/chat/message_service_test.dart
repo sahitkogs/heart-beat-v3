@@ -86,7 +86,6 @@ class _FakeCrypto implements CryptoService {
     required List<int> plaintext,
   }) async {
     encryptCalls++;
-    // Fake "encryption" — prefix the plaintext so the test can detect it.
     return [0xCC, ...plaintext];
   }
 
@@ -96,7 +95,6 @@ class _FakeCrypto implements CryptoService {
     required List<int> ciphertext,
   }) async {
     decryptCalls++;
-    // Strip the 0xCC prefix written by encrypt().
     if (ciphertext.isNotEmpty && ciphertext.first == 0xCC) {
       return ciphertext.sublist(1);
     }
@@ -113,6 +111,23 @@ void main() {
 
   final myPub = 'aa' * 32;
   final peerPub = 'bb' * 32;
+
+  CryptoPreKeyBundle peerBundle() => const CryptoPreKeyBundle(
+        ownerPubkeyHex: '',
+        registrationId: 42,
+        deviceId: 1,
+        preKeyId: 7,
+        preKeyPublicHex: '01',
+        signedPreKeyId: 8,
+        signedPreKeyPublicHex: '02',
+        signedPreKeySignatureHex: '03',
+        identityKeyPublicHex: '04',
+      ).copyWithOwner(peerPub);
+
+  Future<void> drainMicrotasks() async {
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+  }
 
   setUp(() {
     db = AppDatabase.forTesting(NativeDatabase.memory());
@@ -133,36 +148,63 @@ void main() {
     await db.close();
   });
 
-  test('first sendText emits PreKey bundle envelope then message envelope',
-      () async {
+  test('first sendText sends bundle, persists row, queues encrypt', () async {
     await service.sendText(peerPubkeyHex: peerPub, body: 'hello');
 
-    expect(relay.sent.length, 2);
+    // Bundle goes out immediately; message is queued, so encrypt hasn't run.
+    expect(relay.sent.length, 1);
     expect(relay.sent[0].to, peerPub);
     expect(relay.sent[0].envelope.first, EnvelopeTag.preKeyBundle);
-
-    // The bundle on the wire should carry the sender's pubkey stamped on it.
     final parsedBundle = EnvelopeWire.parse(relay.sent[0].envelope);
-    expect(parsedBundle.isBundle, isTrue);
     expect(parsedBundle.bundle?.ownerPubkeyHex, myPub);
+    expect(crypto.encryptCalls, 0);
 
-    expect(relay.sent[1].envelope.first, EnvelopeTag.message);
-    final parsedMsg = EnvelopeWire.parse(relay.sent[1].envelope);
-    expect(parsedMsg.isMessage, isTrue);
-    // _FakeCrypto prefixes plaintext with 0xCC.
-    expect(parsedMsg.ciphertext!.first, 0xCC);
-    expect(utf8.decode(parsedMsg.ciphertext!.sublist(1)), 'hello');
-
-    expect(crypto.encryptCalls, 1);
+    // The outbound row is still persisted so the UI can show it.
+    final msgs = await dao.watchMessages(peerPub).first;
+    expect(msgs.length, 1);
+    expect(msgs.first.body, 'hello');
+    expect(msgs.first.senderPubkeyHex, myPub);
   });
 
-  test('second sendText to same peer skips the bundle', () async {
-    await service.sendText(peerPubkeyHex: peerPub, body: 'first');
-    await service.sendText(peerPubkeyHex: peerPub, body: 'second');
+  test('queued sendText flushes when peer bundle arrives', () async {
+    await service.sendText(peerPubkeyHex: peerPub, body: 'queued');
+    expect(crypto.encryptCalls, 0);
 
-    // 2 from first send (bundle + message), 1 from second (message only).
-    expect(relay.sent.length, 3);
-    expect(relay.sent[2].envelope.first, EnvelopeTag.message);
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapPreKeyBundle(peerBundle()),
+    ));
+    await drainMicrotasks();
+
+    // After the bundle arrives: encrypt fires once, message envelope sent.
+    expect(crypto.encryptCalls, 1);
+    final msgEnvelopes = relay.sent
+        .where((f) => f.envelope.first == EnvelopeTag.message)
+        .toList();
+    expect(msgEnvelopes.length, 1);
+    final parsedMsg = EnvelopeWire.parse(msgEnvelopes.first.envelope);
+    expect(utf8.decode(parsedMsg.ciphertext!.sublist(1)), 'queued');
+  });
+
+  test('second sendText after bundle is already established sends immediately',
+      () async {
+    // Bootstrap: peer bundle arrives first.
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapPreKeyBundle(peerBundle()),
+    ));
+    await drainMicrotasks();
+    final sentBefore = relay.sent.length;
+
+    await service.sendText(peerPubkeyHex: peerPub, body: 'one');
+    await service.sendText(peerPubkeyHex: peerPub, body: 'two');
+
+    // Each subsequent sendText sends exactly one message envelope.
+    final newSent = relay.sent.skip(sentBefore).toList();
+    final msgFrames = newSent
+        .where((f) => f.envelope.first == EnvelopeTag.message)
+        .toList();
+    expect(msgFrames.length, 2);
     expect(crypto.encryptCalls, 2);
   });
 
@@ -171,10 +213,7 @@ void main() {
     final envelope = EnvelopeWire.wrapMessage(ciphertext);
 
     relay.emit(DeliverFrame(fromPubkeyHex: peerPub, envelope: envelope));
-
-    // Drain microtasks so the async _handleDeliver chain completes.
-    await Future<void>.delayed(Duration.zero);
-    await Future<void>.delayed(Duration.zero);
+    await drainMicrotasks();
 
     final msgs = await dao.watchMessages(peerPub).first;
     expect(msgs.length, 1);
@@ -187,34 +226,30 @@ void main() {
     expect(chatList.first.lastMessagePreview, 'hi from peer');
   });
 
-  test('inbound bundle envelope calls processPeerPreKeyBundle', () async {
-    final bundle = CryptoPreKeyBundle(
-      ownerPubkeyHex: peerPub,
-      registrationId: 42,
-      deviceId: 1,
-      preKeyId: 7,
-      preKeyPublicHex: '01' * 32,
-      signedPreKeyId: 8,
-      signedPreKeyPublicHex: '02' * 32,
-      signedPreKeySignatureHex: '03' * 32,
-      identityKeyPublicHex: '04' * 32,
-    );
-    final envelope = EnvelopeWire.wrapPreKeyBundle(bundle);
-
-    relay.emit(DeliverFrame(fromPubkeyHex: peerPub, envelope: envelope));
-
-    await Future<void>.delayed(Duration.zero);
-    await Future<void>.delayed(Duration.zero);
+  test('inbound bundle envelope processes peer and sends our bundle back',
+      () async {
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapPreKeyBundle(peerBundle()),
+    ));
+    await drainMicrotasks();
 
     expect(crypto.processedBundles.length, 1);
     expect(crypto.processedBundles.first.registrationId, 42);
 
-    // A bundle frame should not insert a message row.
+    // We should have replied with our own bundle so the peer can encrypt back.
+    final ourBundles = relay.sent
+        .where((f) => f.envelope.first == EnvelopeTag.preKeyBundle)
+        .toList();
+    expect(ourBundles.length, 1);
+    expect(ourBundles.first.to, peerPub);
+
     final msgs = await dao.watchMessages(peerPub).first;
     expect(msgs, isEmpty);
   });
 
-  test('outbound sendText persists a row attributed to me', () async {
+  test('outbound sendText persists a row attributed to me with lamport 1',
+      () async {
     await service.sendText(peerPubkeyHex: peerPub, body: 'mine');
 
     final msgs = await dao.watchMessages(peerPub).first;
@@ -222,5 +257,19 @@ void main() {
     expect(msgs.first.body, 'mine');
     expect(msgs.first.senderPubkeyHex, myPub);
     expect(msgs.first.lamport, 1);
+  });
+
+  test('openChat sends bundle once and does not send any message', () async {
+    await service.openChat(peerPub);
+    await service.openChat(peerPub); // idempotent
+
+    expect(relay.sent.length, 1);
+    expect(relay.sent.first.envelope.first, EnvelopeTag.preKeyBundle);
+    expect(crypto.encryptCalls, 0);
+
+    // ensureChat was called so the chat row exists.
+    final chats = await dao.watchChats().first;
+    expect(chats.length, 1);
+    expect(chats.first.peerPubkeyHex, peerPub);
   });
 }
