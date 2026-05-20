@@ -25,13 +25,23 @@ class NotificationsService {
 
   bool _initialized = false;
 
-  Future<void> init() async {
+  /// Optional callback invoked when the user taps a notification while the
+  /// app is in foreground or warm-started. Set by `init(onTap:)`. For
+  /// cold-launch (process killed) the payload is delivered via
+  /// [getLaunchDetails] instead.
+  void Function(String payload)? _onTap;
+
+  Future<void> init({void Function(String payload)? onTap}) async {
     if (_initialized) return;
+    _onTap = onTap;
 
     const initSettings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
     );
-    await plugin.initialize(settings: initSettings);
+    await plugin.initialize(
+      settings: initSettings,
+      onDidReceiveNotificationResponse: _handleResponse,
+    );
 
     if (Platform.isAndroid) {
       final androidPlugin = plugin.resolvePlatformSpecificImplementation<
@@ -55,6 +65,21 @@ class NotificationsService {
   /// Android (status is auto-granted). Returns true if granted, false if
   /// denied or permanently denied — callers should not block on the result;
   /// the only consequence of denial is that the user won't see banners.
+  /// Returns the payload that launched the app if the user tapped a
+  /// notification while the process was killed. Null otherwise. Caller is
+  /// responsible for routing (e.g. pushing ChatThreadScreen).
+  Future<String?> getLaunchPayload() async {
+    final details = await plugin.getNotificationAppLaunchDetails();
+    if (details?.didNotificationLaunchApp != true) return null;
+    return details!.notificationResponse?.payload;
+  }
+
+  void _handleResponse(NotificationResponse resp) {
+    final payload = resp.payload;
+    if (payload == null) return;
+    _onTap?.call(payload);
+  }
+
   Future<bool> requestPermission() async {
     if (!Platform.isAndroid) return true;
     final status = await Permission.notification.status;

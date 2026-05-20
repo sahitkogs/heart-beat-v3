@@ -3,11 +3,31 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'features/chat/chat_thread_screen.dart';
 import 'features/home/home_screen.dart';
 import 'firebase_options.dart';
 import 'services/background_message_handler.dart';
 import 'services/notifications_service.dart';
 import 'theme/app_theme.dart';
+
+/// Global navigator key used by the notification tap handler to push the
+/// chat thread from a `BuildContext`-less callback (NotificationsService).
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+
+void _openChatThread(String peerPubkeyHex) {
+  final state = rootNavigatorKey.currentState;
+  if (state == null) {
+    // Navigator isn't mounted yet — possible during cold-launch before
+    // MaterialApp builds. The cold-launch path handles this case via
+    // initialRoute below.
+    return;
+  }
+  state.push(
+    MaterialPageRoute(
+      builder: (_) => ChatThreadScreen(peerPubkeyHex: peerPubkeyHex),
+    ),
+  );
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,7 +55,7 @@ Future<void> main() async {
   }
 
   try {
-    await NotificationsService.instance.init();
+    await NotificationsService.instance.init(onTap: _openChatThread);
     // ignore: avoid_print
     print('[main] NotificationsService initialized');
   } catch (e, st) {
@@ -43,17 +63,50 @@ Future<void> main() async {
     print('[main] NotificationsService init FAILED: $e\n$st');
   }
 
-  runApp(const ProviderScope(child: HeartbeatV3App()));
+  // Cold-launch from a tapped notification: the app process was killed,
+  // user tapped, OS started us. The payload is available via FLN; we
+  // schedule the chat-thread push after the first frame builds.
+  String? coldLaunchPeer;
+  try {
+    coldLaunchPeer = await NotificationsService.instance.getLaunchPayload();
+  } catch (e) {
+    // ignore: avoid_print
+    print('[main] getLaunchPayload error: $e');
+  }
+
+  runApp(ProviderScope(child: HeartbeatV3App(coldLaunchPeer: coldLaunchPeer)));
 }
 
-class HeartbeatV3App extends StatelessWidget {
-  const HeartbeatV3App({super.key});
+class HeartbeatV3App extends StatefulWidget {
+  const HeartbeatV3App({super.key, this.coldLaunchPeer});
+
+  /// Peer pubkey hex carried over by a notification that woke the process
+  /// from a fully-killed state. Null on a regular launch.
+  final String? coldLaunchPeer;
+
+  @override
+  State<HeartbeatV3App> createState() => _HeartbeatV3AppState();
+}
+
+class _HeartbeatV3AppState extends State<HeartbeatV3App> {
+  @override
+  void initState() {
+    super.initState();
+    final peer = widget.coldLaunchPeer;
+    if (peer != null) {
+      // Wait for the first frame so MaterialApp + Navigator have built.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openChatThread(peer);
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Heartbeat v3',
       theme: buildAppTheme(),
+      navigatorKey: rootNavigatorKey,
       home: const HomeScreen(),
     );
   }
