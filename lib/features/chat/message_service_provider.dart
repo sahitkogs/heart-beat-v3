@@ -1,0 +1,42 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../chat/chat_providers.dart';
+import '../../chat/message_service.dart';
+import '../../relay/relay_client.dart';
+import '../../services/crypto_service.dart';
+import '../../services/libsignal_crypto_service.dart';
+import '../identity/identity_provider.dart';
+
+const String relayWsUrl = 'ws://34.42.231.29:8080/v1/signal';
+
+final cryptoServiceProvider = FutureProvider<CryptoService>((ref) async {
+  final svc = LibsignalCryptoService();
+  await svc.initialize();
+  return svc;
+});
+
+final relayClientProvider = FutureProvider<RelayClient>((ref) async {
+  final signing = ref.watch(signingServiceProvider);
+  final client = RelayClient(
+    relayWsUrl: Uri.parse(relayWsUrl),
+    signing: signing,
+  );
+  await client.connect();
+  ref.onDispose(() => client.dispose());
+  return client;
+});
+
+final messageServiceProvider = FutureProvider<MessageService>((ref) async {
+  final crypto = await ref.watch(cryptoServiceProvider.future);
+  final relay = await ref.watch(relayClientProvider.future);
+  final dao = ref.watch(chatsDaoProvider);
+  final identity = await ref.watch(identityProvider.future);
+  final svc = MessageService(
+    crypto: crypto,
+    relay: relay,
+    dao: dao,
+    myPubkeyHex: identity.publicKeyHex,
+  );
+  ref.onDispose(() => svc.dispose());
+  return svc;
+});
