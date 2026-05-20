@@ -41,6 +41,7 @@ class MessageService {
   /// Called when a chat thread is opened so both sides exchange bundles even
   /// before the first user-typed message. Idempotent.
   Future<void> openChat(String peerPubkeyHex) async {
+    _log('openChat ${_short(peerPubkeyHex)}');
     await dao.ensureChat(peerPubkeyHex);
     await _maybeSendOwnBundle(peerPubkeyHex);
   }
@@ -49,19 +50,31 @@ class MessageService {
     required String peerPubkeyHex,
     required String body,
   }) async {
+    _log('sendText peer=${_short(peerPubkeyHex)} bodyLen=${body.length}');
     await dao.ensureChat(peerPubkeyHex);
     await _maybeSendOwnBundle(peerPubkeyHex);
     await _persistOutbound(peerPubkeyHex, body);
 
     if (!_peerBundleReceived.contains(peerPubkeyHex)) {
       (_pendingByPeer[peerPubkeyHex] ??= <String>[]).add(body);
+      _log('queued (no peer bundle yet) peer=${_short(peerPubkeyHex)} '
+          'queueDepth=${_pendingByPeer[peerPubkeyHex]!.length}');
       return;
     }
-    await _encryptAndSend(peerPubkeyHex, body);
+    try {
+      await _encryptAndSend(peerPubkeyHex, body);
+      _log('encrypted+sent peer=${_short(peerPubkeyHex)}');
+    } catch (e, st) {
+      _log('ENCRYPT FAIL peer=${_short(peerPubkeyHex)} err=$e\n$st');
+      rethrow;
+    }
   }
 
   Future<void> _maybeSendOwnBundle(String peerPubkeyHex) async {
-    if (_bundleSentTo.contains(peerPubkeyHex)) return;
+    if (_bundleSentTo.contains(peerPubkeyHex)) {
+      _log('bundle already sent to ${_short(peerPubkeyHex)}');
+      return;
+    }
     final myBundle = await crypto.myPreKeyBundle();
     final stamped = myBundle.copyWithOwner(myPubkeyHex);
     await relay.send(
@@ -69,6 +82,8 @@ class MessageService {
       envelope: EnvelopeWire.wrapPreKeyBundle(stamped),
     );
     _bundleSentTo.add(peerPubkeyHex);
+    _log('sent OUR bundle to ${_short(peerPubkeyHex)} (preKeyId='
+        '${stamped.preKeyId} regId=${stamped.registrationId})');
   }
 
   Future<void> _persistOutbound(String peerPubkeyHex, String body) async {
@@ -104,43 +119,72 @@ class MessageService {
   }
 
   Future<void> _handleDeliver(DeliverFrame frame) async {
+    _log('inbound deliver from=${_short(frame.fromPubkeyHex)} '
+        'envBytes=${frame.envelope.length} tag=0x${frame.envelope.isNotEmpty ? frame.envelope.first.toRadixString(16) : "??"}');
     await dao.ensureChat(frame.fromPubkeyHex);
     final ParsedEnvelope parsed;
     try {
       parsed = EnvelopeWire.parse(frame.envelope);
-    } on FormatException {
+    } on FormatException catch (e) {
+      _log('parse envelope FAIL: $e');
       return;
     }
 
     if (parsed.isBundle) {
-      await crypto.processPeerPreKeyBundle(parsed.bundle!);
+      _log('inbound BUNDLE from=${_short(frame.fromPubkeyHex)} '
+          'preKeyId=${parsed.bundle!.preKeyId} regId=${parsed.bundle!.registrationId}');
+      final isFirstFromPeer =
+          !_peerBundleReceived.contains(frame.fromPubkeyHex);
+      try {
+        await crypto.processPeerPreKeyBundle(parsed.bundle!);
+      } catch (e, st) {
+        _log('processBundle FAIL: $e\n$st');
+        return;
+      }
       _peerBundleReceived.add(frame.fromPubkeyHex);
-      // Make sure the peer also has our bundle so they can encrypt back.
-      await _maybeSendOwnBundle(frame.fromPubkeyHex);
-      // Drain anything that was queued while we waited.
+      // Re-echo our bundle ONLY on the first bundle we receive from this
+      // peer: our earlier send may have failed (e.g. recipient_offline), so
+      // we force a re-send to make sure the peer can encrypt back. Avoid
+      // doing this on every inbound bundle — that creates an infinite
+      // ping-pong (their echo triggers ours triggers theirs…).
+      if (isFirstFromPeer) {
+        _bundleSentTo.remove(frame.fromPubkeyHex);
+        try {
+          await _maybeSendOwnBundle(frame.fromPubkeyHex);
+        } catch (e, st) {
+          _log('re-echo bundle FAIL: $e\n$st');
+        }
+      }
       final pending = _pendingByPeer.remove(frame.fromPubkeyHex);
       if (pending != null) {
+        _log('draining ${pending.length} pending msg(s) to '
+            '${_short(frame.fromPubkeyHex)}');
         for (final body in pending) {
           try {
             await _encryptAndSend(frame.fromPubkeyHex, body);
-          } catch (_) {
-            // Drop on the floor for now; future phase: retry / surface to UI.
+            _log('drained+sent peer=${_short(frame.fromPubkeyHex)}');
+          } catch (e, st) {
+            _log('drain ENCRYPT FAIL: $e\n$st');
           }
         }
       }
       return;
     }
 
+    _log('inbound MESSAGE from=${_short(frame.fromPubkeyHex)} '
+        'ctBytes=${parsed.ciphertext!.length}');
     final List<int> plaintext;
     try {
       plaintext = await crypto.decrypt(
         peerPubkeyHex: frame.fromPubkeyHex,
         ciphertext: parsed.ciphertext!,
       );
-    } catch (_) {
+    } catch (e, st) {
+      _log('DECRYPT FAIL from=${_short(frame.fromPubkeyHex)} err=$e\n$st');
       return;
     }
     final body = utf8.decode(plaintext);
+    _log('decrypted from=${_short(frame.fromPubkeyHex)} bodyLen=${body.length}');
 
     final lamport = await dao.bumpLamport(frame.fromPubkeyHex);
     final now = DateTime.now();
@@ -158,6 +202,14 @@ class MessageService {
 
   String _preview(String body) =>
       body.length <= 80 ? body : '${body.substring(0, 77)}...';
+
+  static String _short(String hex) =>
+      hex.length >= 16 ? '${hex.substring(0, 6)}…${hex.substring(hex.length - 6)}' : hex;
+
+  static void _log(String msg) {
+    // ignore: avoid_print
+    print('[MS] $msg');
+  }
 
   Future<void> dispose() async {
     await _sub.cancel();

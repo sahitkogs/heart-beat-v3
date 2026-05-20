@@ -16,6 +16,10 @@ class LibsignalCryptoService implements CryptoService {
   late int _deviceId;
   late int _ourPreKeyId;
   late int _ourSignedPreKeyId;
+  // Cached at init: libsignal consumes a prekey once it's used to derive a
+  // session, so loadPreKey() returns null on subsequent calls. The bundle
+  // exposes only public keys, which are safe to keep returning.
+  late CryptoPreKeyBundle _cachedBundle;
 
   @override
   Future<void> initialize() async {
@@ -35,15 +39,10 @@ class LibsignalCryptoService implements CryptoService {
     final signedPreKey =
         lsl.generateSignedPreKey(identityKeyPair, _ourSignedPreKeyId);
     await _store.storeSignedPreKey(signedPreKey.id, signedPreKey);
-  }
 
-  @override
-  Future<CryptoPreKeyBundle> myPreKeyBundle() async {
-    final identityKeyPair = await _store.getIdentityKeyPair();
-    final preKey = await _store.loadPreKey(_ourPreKeyId);
-    final signedPreKey = await _store.loadSignedPreKey(_ourSignedPreKeyId);
-    return CryptoPreKeyBundle(
-      ownerPubkeyHex: '', // caller stamps via copyWithOwner
+    final preKey = preKeys.first;
+    _cachedBundle = CryptoPreKeyBundle(
+      ownerPubkeyHex: '',
       registrationId: _registrationId,
       deviceId: _deviceId,
       preKeyId: preKey.id,
@@ -55,6 +54,9 @@ class LibsignalCryptoService implements CryptoService {
       identityKeyPublicHex: _hex(identityKeyPair.getPublicKey().serialize()),
     );
   }
+
+  @override
+  Future<CryptoPreKeyBundle> myPreKeyBundle() async => _cachedBundle;
 
   @override
   Future<void> processPeerPreKeyBundle(CryptoPreKeyBundle bundle) async {

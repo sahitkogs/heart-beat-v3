@@ -33,30 +33,41 @@ class RelayClient {
     final sig = await signing.sign(utf8.encode('WS-CONNECT:$tsStr'));
     final sigHex = bytesToHex(sig);
 
-    final webSocket = await WebSocket.connect(
-      relayWsUrl.toString(),
-      headers: {
-        'X-Heartbeat-Pubkey': pubHex,
-        'X-Heartbeat-Sig': sigHex,
-        'X-Heartbeat-Timestamp': tsStr,
-      },
-    );
-    _channel = IOWebSocketChannel(webSocket);
+    _log('connecting as $pubHex');
+    try {
+      final webSocket = await WebSocket.connect(
+        relayWsUrl.toString(),
+        headers: {
+          'X-Heartbeat-Pubkey': pubHex,
+          'X-Heartbeat-Sig': sigHex,
+          'X-Heartbeat-Timestamp': tsStr,
+        },
+      );
+      _channel = IOWebSocketChannel(webSocket);
+      _log('connected');
+    } catch (e, st) {
+      _log('CONNECT FAIL: $e\n$st');
+      rethrow;
+    }
 
     _channel!.stream.listen(
       (data) {
         if (data is String) {
           try {
-            _inbound.add(RelayFrame.parse(data));
-          } catch (_) {
-            // Drop unparseable frames silently for now.
+            final frame = RelayFrame.parse(data);
+            _log('inbound type=${frame.runtimeType} raw=${data.length}B');
+            _inbound.add(frame);
+          } catch (e) {
+            _log('inbound parse FAIL: $e raw=$data');
           }
         }
       },
-      onError: (_) {
+      onError: (e) {
+        _log('stream error: $e');
         if (!_inbound.isClosed) _inbound.close();
       },
       onDone: () {
+        _log('stream done');
         if (!_inbound.isClosed) _inbound.close();
       },
     );
@@ -66,9 +77,14 @@ class RelayClient {
     required String toPubkeyHex,
     required List<int> envelope,
   }) async {
-    _channel?.sink.add(
+    if (_channel == null) {
+      _log('SEND while disconnected! to=$toPubkeyHex');
+      return;
+    }
+    _channel!.sink.add(
       RelayFrame.buildSend(toPubkeyHex: toPubkeyHex, envelope: envelope),
     );
+    _log('sent to=${toPubkeyHex.substring(0, 8)} envBytes=${envelope.length}');
   }
 
   Future<void> dispose() async {
@@ -82,10 +98,14 @@ class RelayClient {
   /// `time.RFC3339`, which the server expects).
   String _rfc3339Now() {
     final now = DateTime.now().toUtc();
-    // toIso8601String() produces e.g. "2026-05-19T12:34:56.789Z"; strip fractional seconds.
     final iso = now.toIso8601String();
     final m = RegExp(r'^(.+?)(?:\.\d+)?(Z)$').firstMatch(iso);
     if (m == null) return iso;
     return '${m.group(1)}${m.group(2)}';
+  }
+
+  static void _log(String msg) {
+    // ignore: avoid_print
+    print('[Relay] $msg');
   }
 }

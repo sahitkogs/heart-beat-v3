@@ -259,6 +259,28 @@ void main() {
     expect(msgs.first.lamport, 1);
   });
 
+  test('inbound peer bundle re-echoes our bundle even if we sent before',
+      () async {
+    // Simulate the real race: we sent our bundle first (peer was offline so
+    // relay dropped it), then peer comes online and sends theirs.
+    await service.openChat(peerPub);
+    final sentByUs = relay.sent.length;
+    expect(sentByUs, 1); // our bundle attempt
+
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapPreKeyBundle(peerBundle()),
+    ));
+    await drainMicrotasks();
+
+    // We should re-send our bundle so the peer (who likely missed the first
+    // attempt) actually receives it.
+    final ourBundles = relay.sent
+        .where((f) => f.envelope.first == EnvelopeTag.preKeyBundle)
+        .toList();
+    expect(ourBundles.length, 2);
+  });
+
   test('openChat sends bundle once and does not send any message', () async {
     await service.openChat(peerPub);
     await service.openChat(peerPub); // idempotent
