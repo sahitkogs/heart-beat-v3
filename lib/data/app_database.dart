@@ -20,6 +20,11 @@ class Chats extends Table {
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get lastMessageAt => dateTime().nullable()();
   TextColumn get lastMessagePreview => text().nullable()();
+  // Bundle-exchange state (schema v4). Replaces the in-memory
+  // _bundleSentTo / _peerBundleReceived sets in MessageService so a background
+  // isolate doesn't re-send bundles on every wake.
+  DateTimeColumn get bundleSentAt => dateTime().nullable()();
+  DateTimeColumn get peerBundleReceivedAt => dateTime().nullable()();
 
   @override
   Set<Column> get primaryKey => {peerPubkeyHex};
@@ -123,7 +128,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -142,6 +147,9 @@ class AppDatabase extends _$AppDatabase {
               await m.createTable(signalSignedPreKeys);
               await m.createTable(signalSessions);
               await m.createTable(signalPeerIdentities);
+            } else if (v == 3) {
+              await m.addColumn(chats, chats.bundleSentAt);
+              await m.addColumn(chats, chats.peerBundleReceivedAt);
             }
           }
         },

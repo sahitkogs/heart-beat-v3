@@ -269,12 +269,36 @@ class $ChatsTable extends Chats with TableInfo<$ChatsTable, Chat> {
         type: DriftSqlType.string,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _bundleSentAtMeta = const VerificationMeta(
+    'bundleSentAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> bundleSentAt = GeneratedColumn<DateTime>(
+    'bundle_sent_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _peerBundleReceivedAtMeta =
+      const VerificationMeta('peerBundleReceivedAt');
+  @override
+  late final GeneratedColumn<DateTime> peerBundleReceivedAt =
+      GeneratedColumn<DateTime>(
+        'peer_bundle_received_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     peerPubkeyHex,
     createdAt,
     lastMessageAt,
     lastMessagePreview,
+    bundleSentAt,
+    peerBundleReceivedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -325,6 +349,24 @@ class $ChatsTable extends Chats with TableInfo<$ChatsTable, Chat> {
         ),
       );
     }
+    if (data.containsKey('bundle_sent_at')) {
+      context.handle(
+        _bundleSentAtMeta,
+        bundleSentAt.isAcceptableOrUnknown(
+          data['bundle_sent_at']!,
+          _bundleSentAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('peer_bundle_received_at')) {
+      context.handle(
+        _peerBundleReceivedAtMeta,
+        peerBundleReceivedAt.isAcceptableOrUnknown(
+          data['peer_bundle_received_at']!,
+          _peerBundleReceivedAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -350,6 +392,14 @@ class $ChatsTable extends Chats with TableInfo<$ChatsTable, Chat> {
         DriftSqlType.string,
         data['${effectivePrefix}last_message_preview'],
       ),
+      bundleSentAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}bundle_sent_at'],
+      ),
+      peerBundleReceivedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}peer_bundle_received_at'],
+      ),
     );
   }
 
@@ -364,11 +414,15 @@ class Chat extends DataClass implements Insertable<Chat> {
   final DateTime createdAt;
   final DateTime? lastMessageAt;
   final String? lastMessagePreview;
+  final DateTime? bundleSentAt;
+  final DateTime? peerBundleReceivedAt;
   const Chat({
     required this.peerPubkeyHex,
     required this.createdAt,
     this.lastMessageAt,
     this.lastMessagePreview,
+    this.bundleSentAt,
+    this.peerBundleReceivedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -380,6 +434,12 @@ class Chat extends DataClass implements Insertable<Chat> {
     }
     if (!nullToAbsent || lastMessagePreview != null) {
       map['last_message_preview'] = Variable<String>(lastMessagePreview);
+    }
+    if (!nullToAbsent || bundleSentAt != null) {
+      map['bundle_sent_at'] = Variable<DateTime>(bundleSentAt);
+    }
+    if (!nullToAbsent || peerBundleReceivedAt != null) {
+      map['peer_bundle_received_at'] = Variable<DateTime>(peerBundleReceivedAt);
     }
     return map;
   }
@@ -394,6 +454,12 @@ class Chat extends DataClass implements Insertable<Chat> {
       lastMessagePreview: lastMessagePreview == null && nullToAbsent
           ? const Value.absent()
           : Value(lastMessagePreview),
+      bundleSentAt: bundleSentAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(bundleSentAt),
+      peerBundleReceivedAt: peerBundleReceivedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(peerBundleReceivedAt),
     );
   }
 
@@ -409,6 +475,10 @@ class Chat extends DataClass implements Insertable<Chat> {
       lastMessagePreview: serializer.fromJson<String?>(
         json['lastMessagePreview'],
       ),
+      bundleSentAt: serializer.fromJson<DateTime?>(json['bundleSentAt']),
+      peerBundleReceivedAt: serializer.fromJson<DateTime?>(
+        json['peerBundleReceivedAt'],
+      ),
     );
   }
   @override
@@ -419,6 +489,10 @@ class Chat extends DataClass implements Insertable<Chat> {
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'lastMessageAt': serializer.toJson<DateTime?>(lastMessageAt),
       'lastMessagePreview': serializer.toJson<String?>(lastMessagePreview),
+      'bundleSentAt': serializer.toJson<DateTime?>(bundleSentAt),
+      'peerBundleReceivedAt': serializer.toJson<DateTime?>(
+        peerBundleReceivedAt,
+      ),
     };
   }
 
@@ -427,6 +501,8 @@ class Chat extends DataClass implements Insertable<Chat> {
     DateTime? createdAt,
     Value<DateTime?> lastMessageAt = const Value.absent(),
     Value<String?> lastMessagePreview = const Value.absent(),
+    Value<DateTime?> bundleSentAt = const Value.absent(),
+    Value<DateTime?> peerBundleReceivedAt = const Value.absent(),
   }) => Chat(
     peerPubkeyHex: peerPubkeyHex ?? this.peerPubkeyHex,
     createdAt: createdAt ?? this.createdAt,
@@ -436,6 +512,10 @@ class Chat extends DataClass implements Insertable<Chat> {
     lastMessagePreview: lastMessagePreview.present
         ? lastMessagePreview.value
         : this.lastMessagePreview,
+    bundleSentAt: bundleSentAt.present ? bundleSentAt.value : this.bundleSentAt,
+    peerBundleReceivedAt: peerBundleReceivedAt.present
+        ? peerBundleReceivedAt.value
+        : this.peerBundleReceivedAt,
   );
   Chat copyWithCompanion(ChatsCompanion data) {
     return Chat(
@@ -449,6 +529,12 @@ class Chat extends DataClass implements Insertable<Chat> {
       lastMessagePreview: data.lastMessagePreview.present
           ? data.lastMessagePreview.value
           : this.lastMessagePreview,
+      bundleSentAt: data.bundleSentAt.present
+          ? data.bundleSentAt.value
+          : this.bundleSentAt,
+      peerBundleReceivedAt: data.peerBundleReceivedAt.present
+          ? data.peerBundleReceivedAt.value
+          : this.peerBundleReceivedAt,
     );
   }
 
@@ -458,14 +544,22 @@ class Chat extends DataClass implements Insertable<Chat> {
           ..write('peerPubkeyHex: $peerPubkeyHex, ')
           ..write('createdAt: $createdAt, ')
           ..write('lastMessageAt: $lastMessageAt, ')
-          ..write('lastMessagePreview: $lastMessagePreview')
+          ..write('lastMessagePreview: $lastMessagePreview, ')
+          ..write('bundleSentAt: $bundleSentAt, ')
+          ..write('peerBundleReceivedAt: $peerBundleReceivedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(peerPubkeyHex, createdAt, lastMessageAt, lastMessagePreview);
+  int get hashCode => Object.hash(
+    peerPubkeyHex,
+    createdAt,
+    lastMessageAt,
+    lastMessagePreview,
+    bundleSentAt,
+    peerBundleReceivedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -473,7 +567,9 @@ class Chat extends DataClass implements Insertable<Chat> {
           other.peerPubkeyHex == this.peerPubkeyHex &&
           other.createdAt == this.createdAt &&
           other.lastMessageAt == this.lastMessageAt &&
-          other.lastMessagePreview == this.lastMessagePreview);
+          other.lastMessagePreview == this.lastMessagePreview &&
+          other.bundleSentAt == this.bundleSentAt &&
+          other.peerBundleReceivedAt == this.peerBundleReceivedAt);
 }
 
 class ChatsCompanion extends UpdateCompanion<Chat> {
@@ -481,12 +577,16 @@ class ChatsCompanion extends UpdateCompanion<Chat> {
   final Value<DateTime> createdAt;
   final Value<DateTime?> lastMessageAt;
   final Value<String?> lastMessagePreview;
+  final Value<DateTime?> bundleSentAt;
+  final Value<DateTime?> peerBundleReceivedAt;
   final Value<int> rowid;
   const ChatsCompanion({
     this.peerPubkeyHex = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.lastMessageAt = const Value.absent(),
     this.lastMessagePreview = const Value.absent(),
+    this.bundleSentAt = const Value.absent(),
+    this.peerBundleReceivedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ChatsCompanion.insert({
@@ -494,6 +594,8 @@ class ChatsCompanion extends UpdateCompanion<Chat> {
     required DateTime createdAt,
     this.lastMessageAt = const Value.absent(),
     this.lastMessagePreview = const Value.absent(),
+    this.bundleSentAt = const Value.absent(),
+    this.peerBundleReceivedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : peerPubkeyHex = Value(peerPubkeyHex),
        createdAt = Value(createdAt);
@@ -502,6 +604,8 @@ class ChatsCompanion extends UpdateCompanion<Chat> {
     Expression<DateTime>? createdAt,
     Expression<DateTime>? lastMessageAt,
     Expression<String>? lastMessagePreview,
+    Expression<DateTime>? bundleSentAt,
+    Expression<DateTime>? peerBundleReceivedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -510,6 +614,9 @@ class ChatsCompanion extends UpdateCompanion<Chat> {
       if (lastMessageAt != null) 'last_message_at': lastMessageAt,
       if (lastMessagePreview != null)
         'last_message_preview': lastMessagePreview,
+      if (bundleSentAt != null) 'bundle_sent_at': bundleSentAt,
+      if (peerBundleReceivedAt != null)
+        'peer_bundle_received_at': peerBundleReceivedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -519,6 +626,8 @@ class ChatsCompanion extends UpdateCompanion<Chat> {
     Value<DateTime>? createdAt,
     Value<DateTime?>? lastMessageAt,
     Value<String?>? lastMessagePreview,
+    Value<DateTime?>? bundleSentAt,
+    Value<DateTime?>? peerBundleReceivedAt,
     Value<int>? rowid,
   }) {
     return ChatsCompanion(
@@ -526,6 +635,8 @@ class ChatsCompanion extends UpdateCompanion<Chat> {
       createdAt: createdAt ?? this.createdAt,
       lastMessageAt: lastMessageAt ?? this.lastMessageAt,
       lastMessagePreview: lastMessagePreview ?? this.lastMessagePreview,
+      bundleSentAt: bundleSentAt ?? this.bundleSentAt,
+      peerBundleReceivedAt: peerBundleReceivedAt ?? this.peerBundleReceivedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -545,6 +656,14 @@ class ChatsCompanion extends UpdateCompanion<Chat> {
     if (lastMessagePreview.present) {
       map['last_message_preview'] = Variable<String>(lastMessagePreview.value);
     }
+    if (bundleSentAt.present) {
+      map['bundle_sent_at'] = Variable<DateTime>(bundleSentAt.value);
+    }
+    if (peerBundleReceivedAt.present) {
+      map['peer_bundle_received_at'] = Variable<DateTime>(
+        peerBundleReceivedAt.value,
+      );
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -558,6 +677,8 @@ class ChatsCompanion extends UpdateCompanion<Chat> {
           ..write('createdAt: $createdAt, ')
           ..write('lastMessageAt: $lastMessageAt, ')
           ..write('lastMessagePreview: $lastMessagePreview, ')
+          ..write('bundleSentAt: $bundleSentAt, ')
+          ..write('peerBundleReceivedAt: $peerBundleReceivedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2629,6 +2750,8 @@ typedef $$ChatsTableCreateCompanionBuilder =
       required DateTime createdAt,
       Value<DateTime?> lastMessageAt,
       Value<String?> lastMessagePreview,
+      Value<DateTime?> bundleSentAt,
+      Value<DateTime?> peerBundleReceivedAt,
       Value<int> rowid,
     });
 typedef $$ChatsTableUpdateCompanionBuilder =
@@ -2637,6 +2760,8 @@ typedef $$ChatsTableUpdateCompanionBuilder =
       Value<DateTime> createdAt,
       Value<DateTime?> lastMessageAt,
       Value<String?> lastMessagePreview,
+      Value<DateTime?> bundleSentAt,
+      Value<DateTime?> peerBundleReceivedAt,
       Value<int> rowid,
     });
 
@@ -2665,6 +2790,16 @@ class $$ChatsTableFilterComposer extends Composer<_$AppDatabase, $ChatsTable> {
 
   ColumnFilters<String> get lastMessagePreview => $composableBuilder(
     column: $table.lastMessagePreview,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get bundleSentAt => $composableBuilder(
+    column: $table.bundleSentAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get peerBundleReceivedAt => $composableBuilder(
+    column: $table.peerBundleReceivedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2697,6 +2832,16 @@ class $$ChatsTableOrderingComposer
     column: $table.lastMessagePreview,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get bundleSentAt => $composableBuilder(
+    column: $table.bundleSentAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get peerBundleReceivedAt => $composableBuilder(
+    column: $table.peerBundleReceivedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ChatsTableAnnotationComposer
@@ -2723,6 +2868,16 @@ class $$ChatsTableAnnotationComposer
 
   GeneratedColumn<String> get lastMessagePreview => $composableBuilder(
     column: $table.lastMessagePreview,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get bundleSentAt => $composableBuilder(
+    column: $table.bundleSentAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get peerBundleReceivedAt => $composableBuilder(
+    column: $table.peerBundleReceivedAt,
     builder: (column) => column,
   );
 }
@@ -2759,12 +2914,16 @@ class $$ChatsTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime?> lastMessageAt = const Value.absent(),
                 Value<String?> lastMessagePreview = const Value.absent(),
+                Value<DateTime?> bundleSentAt = const Value.absent(),
+                Value<DateTime?> peerBundleReceivedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ChatsCompanion(
                 peerPubkeyHex: peerPubkeyHex,
                 createdAt: createdAt,
                 lastMessageAt: lastMessageAt,
                 lastMessagePreview: lastMessagePreview,
+                bundleSentAt: bundleSentAt,
+                peerBundleReceivedAt: peerBundleReceivedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2773,12 +2932,16 @@ class $$ChatsTableTableManager
                 required DateTime createdAt,
                 Value<DateTime?> lastMessageAt = const Value.absent(),
                 Value<String?> lastMessagePreview = const Value.absent(),
+                Value<DateTime?> bundleSentAt = const Value.absent(),
+                Value<DateTime?> peerBundleReceivedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ChatsCompanion.insert(
                 peerPubkeyHex: peerPubkeyHex,
                 createdAt: createdAt,
                 lastMessageAt: lastMessageAt,
                 lastMessagePreview: lastMessagePreview,
+                bundleSentAt: bundleSentAt,
+                peerBundleReceivedAt: peerBundleReceivedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
