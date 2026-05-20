@@ -1,0 +1,76 @@
+{
+  "project_info": {
+    "project_number": "575626844367",
+    "project_id": "heartbeat-app-prod",
+    "storage_bucket": "heartbeat-app-prod.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:575626844367:android:d9fba341d52e6a6c9e7fba",
+        "android_client_info": {
+          "package_name": "com.heartbeat.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "575626844367-hg21jcnmcg013gpra0bfci1s7hqdla7n.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.heartbeat.app",
+            "certificate_hash": "9871069e1cd6c2f397ac2d3ec4d514e2514d5ebe"
+          }
+        },
+        {
+          "client_id": "575626844367-vm95a8k7mcp5i6muul19fdkh424f3to3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCQuZ7xQ0mi84-vaxDPHDQ24ZLvl73vUd0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "575626844367-vm95a8k7mcp5i6muul19fdkh424f3to3.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:575626844367:android:7682cd11f2d5bfa89e7fba",
+        "android_client_info": {
+          "package_name": "com.heartbeat.app_v3"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "575626844367-vm95a8k7mcp5i6muul19fdkh424f3to3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCQuZ7xQ0mi84-vaxDPHDQ24ZLvl73vUd0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "575626844367-vm95a8k7mcp5i6muul19fdkh424f3to3.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
