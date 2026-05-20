@@ -5,6 +5,7 @@ import '../../services/notifications_service.dart';
 import '../chat/chat_list_screen.dart';
 import '../contacts/contacts_screen.dart';
 import '../identity/identity_screen.dart';
+import '../notifications/fcm_provider.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -21,6 +22,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // so the OS dialog overlays a rendered UI, not a blank pre-runApp screen.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       NotificationsService.instance.requestPermission();
+      // Fire-and-forget: gated on identityProvider, so this resolves once
+      // the user's keypair exists; failure is logged but never blocks UI.
+      ref.read(fcmRegistrationProvider.future).catchError((Object e) {
+        // ignore: avoid_print
+        print('[HomeScreen] fcm registration failed: $e');
+      });
     });
   }
 
