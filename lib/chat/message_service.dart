@@ -34,8 +34,11 @@ class MessageService {
   // Per-peer state needed for the chicken-and-egg bootstrap: libsignal cannot
   // encrypt to a peer until that peer's PreKey bundle has been processed, so
   // we must wait until we receive it before sending the first message.
-  final Set<String> _bundleSentTo = <String>{};
-  final Set<String> _peerBundleReceived = <String>{};
+  //
+  // bundleSentAt / peerBundleReceivedAt live in drift (T3.1) so a background
+  // FCM isolate (Phase 10.3 T7) doesn't re-run the bundle dance on every wake.
+  // Only the pending-outbound queue stays in-memory — it's session-scoped and
+  // drains the moment the peer's bundle arrives.
   final Map<String, List<String>> _pendingByPeer = <String, List<String>>{};
 
   /// Called when a chat thread is opened so both sides exchange bundles even
@@ -55,7 +58,8 @@ class MessageService {
     await _maybeSendOwnBundle(peerPubkeyHex);
     await _persistOutbound(peerPubkeyHex, body);
 
-    if (!_peerBundleReceived.contains(peerPubkeyHex)) {
+    final chat = await dao.getChat(peerPubkeyHex);
+    if (chat?.peerBundleReceivedAt == null) {
       (_pendingByPeer[peerPubkeyHex] ??= <String>[]).add(body);
       _log('queued (no peer bundle yet) peer=${_short(peerPubkeyHex)} '
           'queueDepth=${_pendingByPeer[peerPubkeyHex]!.length}');
@@ -71,7 +75,8 @@ class MessageService {
   }
 
   Future<void> _maybeSendOwnBundle(String peerPubkeyHex) async {
-    if (_bundleSentTo.contains(peerPubkeyHex)) {
+    final chat = await dao.getChat(peerPubkeyHex);
+    if (chat?.bundleSentAt != null) {
       _log('bundle already sent to ${_short(peerPubkeyHex)}');
       return;
     }
@@ -81,7 +86,7 @@ class MessageService {
       toPubkeyHex: peerPubkeyHex,
       envelope: EnvelopeWire.wrapPreKeyBundle(stamped),
     );
-    _bundleSentTo.add(peerPubkeyHex);
+    await dao.markBundleSent(peerPubkeyHex);
     _log('sent OUR bundle to ${_short(peerPubkeyHex)} (preKeyId='
         '${stamped.preKeyId} regId=${stamped.registrationId})');
   }
@@ -133,22 +138,22 @@ class MessageService {
     if (parsed.isBundle) {
       _log('inbound BUNDLE from=${_short(frame.fromPubkeyHex)} '
           'preKeyId=${parsed.bundle!.preKeyId} regId=${parsed.bundle!.registrationId}');
-      final isFirstFromPeer =
-          !_peerBundleReceived.contains(frame.fromPubkeyHex);
+      final existingChat = await dao.getChat(frame.fromPubkeyHex);
+      final isFirstFromPeer = existingChat?.peerBundleReceivedAt == null;
       try {
         await crypto.processPeerPreKeyBundle(parsed.bundle!);
       } catch (e, st) {
         _log('processBundle FAIL: $e\n$st');
         return;
       }
-      _peerBundleReceived.add(frame.fromPubkeyHex);
+      await dao.markPeerBundleReceived(frame.fromPubkeyHex);
       // Re-echo our bundle ONLY on the first bundle we receive from this
       // peer: our earlier send may have failed (e.g. recipient_offline), so
       // we force a re-send to make sure the peer can encrypt back. Avoid
       // doing this on every inbound bundle — that creates an infinite
       // ping-pong (their echo triggers ours triggers theirs…).
       if (isFirstFromPeer) {
-        _bundleSentTo.remove(frame.fromPubkeyHex);
+        await dao.clearBundleSent(frame.fromPubkeyHex);
         try {
           await _maybeSendOwnBundle(frame.fromPubkeyHex);
         } catch (e, st) {
