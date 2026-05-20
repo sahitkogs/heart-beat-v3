@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'features/home/home_screen.dart';
 import 'firebase_options.dart';
+import 'services/notifications_service.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
@@ -18,6 +19,16 @@ Future<void> main() async {
     // ignore: avoid_print
     print('[main] Firebase init FAILED (continuing without push): $e\n$st');
   }
+
+  try {
+    await NotificationsService.instance.init();
+    // ignore: avoid_print
+    print('[main] NotificationsService initialized');
+  } catch (e, st) {
+    // ignore: avoid_print
+    print('[main] NotificationsService init FAILED: $e\n$st');
+  }
+
   runApp(const ProviderScope(child: HeartbeatV3App()));
 }
 
