@@ -5,12 +5,14 @@ import '../../chat/message_service.dart';
 import '../../relay/relay_client.dart';
 import '../../services/crypto_service.dart';
 import '../../services/libsignal_crypto_service.dart';
+import '../contacts/contacts_provider.dart';
 import '../identity/identity_provider.dart';
 
 const String relayWsUrl = 'ws://34.42.231.29:8080/v1/signal';
 
 final cryptoServiceProvider = FutureProvider<CryptoService>((ref) async {
-  final svc = LibsignalCryptoService();
+  final db = ref.watch(appDatabaseProvider);
+  final svc = LibsignalCryptoService(db);
   await svc.initialize();
   return svc;
 });

@@ -2,48 +2,102 @@ import 'dart:typed_data';
 
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart' as lsl;
 
+import '../data/app_database.dart';
 import 'crypto_pre_key_bundle.dart';
 import 'crypto_service.dart';
+import 'signal_store/drift_signal_protocol_store.dart';
 
-/// CryptoService implementation backed by libsignal_protocol_dart.
-/// Uses the in-memory protocol store for Phase 10.2; persistence to
-/// drift is a later phase concern.
+/// `CryptoService` implementation backed by `libsignal_protocol_dart` with a
+/// persistent drift-backed `SignalProtocolStore`. Identity and signed-prekey
+/// material survive app restart; the FCM background isolate (T7) shares the
+/// same on-disk store.
 class LibsignalCryptoService implements CryptoService {
-  LibsignalCryptoService();
+  LibsignalCryptoService(this._db);
 
-  late lsl.InMemorySignalProtocolStore _store;
-  late int _registrationId;
-  late int _deviceId;
-  late int _ourPreKeyId;
-  late int _ourSignedPreKeyId;
-  // Cached at init: libsignal consumes a prekey once it's used to derive a
-  // session, so loadPreKey() returns null on subsequent calls. The bundle
-  // exposes only public keys, which are safe to keep returning.
+  final AppDatabase _db;
+
+  late final DriftSignalProtocolStore _store = DriftSignalProtocolStore(_db);
+
+  // Stable across the life of one install — known limitation: single fixed
+  // prekey id, multi-peer rotation deferred to 10.4/10.5.
+  static const int _deviceId = 1;
+  static const int _ourPreKeyId = 1;
+  static const int _ourSignedPreKeyId = 1;
+
+  // Cached at init: libsignal consumes a prekey when it builds a session
+  // (removePreKey gets called), so loading it on demand for the bundle would
+  // return null after the first peer pairs. The bundle is public-key info
+  // only, so caching is safe.
   late CryptoPreKeyBundle _cachedBundle;
 
   @override
   Future<void> initialize() async {
-    _registrationId = lsl.generateRegistrationId(false);
-    _deviceId = 1;
-    _ourPreKeyId = 1;
-    _ourSignedPreKeyId = 1;
-
-    final identityKeyPair = lsl.generateIdentityKeyPair();
-    _store = lsl.InMemorySignalProtocolStore(identityKeyPair, _registrationId);
-
-    final preKeys = lsl.generatePreKeys(_ourPreKeyId, 1);
-    for (final pk in preKeys) {
-      await _store.storePreKey(pk.id, pk);
+    if (await _store.identityKeyStore.hasLocalIdentity()) {
+      await _loadExistingIdentity();
+    } else {
+      await _bootstrapFreshIdentity();
     }
+  }
+
+  Future<void> _bootstrapFreshIdentity() async {
+    final identityKeyPair = lsl.generateIdentityKeyPair();
+    final registrationId = lsl.generateRegistrationId(false);
+    await _store.identityKeyStore.saveLocalIdentity(
+      identityKeyPair: identityKeyPair,
+      registrationId: registrationId,
+      deviceId: _deviceId,
+    );
+
+    final preKey = lsl.generatePreKeys(_ourPreKeyId, 1).single;
+    await _store.storePreKey(preKey.id, preKey);
 
     final signedPreKey =
         lsl.generateSignedPreKey(identityKeyPair, _ourSignedPreKeyId);
     await _store.storeSignedPreKey(signedPreKey.id, signedPreKey);
 
-    final preKey = preKeys.first;
-    _cachedBundle = CryptoPreKeyBundle(
+    _cachedBundle = _buildBundle(
+      identityKeyPair: identityKeyPair,
+      registrationId: registrationId,
+      preKey: preKey,
+      signedPreKey: signedPreKey,
+    );
+  }
+
+  Future<void> _loadExistingIdentity() async {
+    final identityKeyPair = await _store.getIdentityKeyPair();
+    final registrationId = await _store.getLocalRegistrationId();
+
+    // Load the prekey if it's still alive; otherwise re-generate with the
+    // same id. Peer apps that cached the OLD bundle will see decryption
+    // failures until they refresh — same limitation as the in-memory build,
+    // just better-defined now.
+    final lsl.PreKeyRecord preKey;
+    if (await _store.containsPreKey(_ourPreKeyId)) {
+      preKey = await _store.loadPreKey(_ourPreKeyId);
+    } else {
+      preKey = lsl.generatePreKeys(_ourPreKeyId, 1).single;
+      await _store.storePreKey(preKey.id, preKey);
+    }
+
+    final signedPreKey = await _store.loadSignedPreKey(_ourSignedPreKeyId);
+
+    _cachedBundle = _buildBundle(
+      identityKeyPair: identityKeyPair,
+      registrationId: registrationId,
+      preKey: preKey,
+      signedPreKey: signedPreKey,
+    );
+  }
+
+  CryptoPreKeyBundle _buildBundle({
+    required lsl.IdentityKeyPair identityKeyPair,
+    required int registrationId,
+    required lsl.PreKeyRecord preKey,
+    required lsl.SignedPreKeyRecord signedPreKey,
+  }) {
+    return CryptoPreKeyBundle(
       ownerPubkeyHex: '',
-      registrationId: _registrationId,
+      registrationId: registrationId,
       deviceId: _deviceId,
       preKeyId: preKey.id,
       preKeyPublicHex: _hex(preKey.getKeyPair().publicKey.serialize()),
@@ -89,7 +143,6 @@ class LibsignalCryptoService implements CryptoService {
     final cipher = lsl.SessionCipher.fromStore(_store, peerAddress);
     final cipherMessage =
         await cipher.encrypt(Uint8List.fromList(plaintext));
-    // Wire format: 1-byte type prefix + serialized message.
     return [cipherMessage.getType(), ...cipherMessage.serialize()];
   }
 

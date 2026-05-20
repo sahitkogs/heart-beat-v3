@@ -1,17 +1,28 @@
+import 'package:app_v3/data/app_database.dart';
 import 'package:app_v3/services/crypto_service.dart';
 import 'package:app_v3/services/libsignal_crypto_service.dart';
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('CryptoService contract (LibsignalCryptoService)', () {
+    late AppDatabase aliceDb;
+    late AppDatabase bobDb;
     late CryptoService alice;
     late CryptoService bob;
 
     setUp(() async {
-      alice = LibsignalCryptoService();
-      bob = LibsignalCryptoService();
+      aliceDb = AppDatabase.forTesting(NativeDatabase.memory());
+      bobDb = AppDatabase.forTesting(NativeDatabase.memory());
+      alice = LibsignalCryptoService(aliceDb);
+      bob = LibsignalCryptoService(bobDb);
       await alice.initialize();
       await bob.initialize();
+    });
+
+    tearDown(() async {
+      await aliceDb.close();
+      await bobDb.close();
     });
 
     test('Alice -> Bob round-trips a message after exchanging PreKey bundles',
