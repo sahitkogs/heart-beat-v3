@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../chat/chat_thread_screen.dart';
 import 'add_contact_screen.dart';
 import 'contacts_provider.dart';
 
@@ -38,6 +39,13 @@ class ContactsScreen extends ConsumerWidget {
                   style: const TextStyle(fontFamily: 'monospace'),
                 ),
                 subtitle: Text('added ${c.addedAt.toLocal()}'),
+                trailing: const Icon(Icons.chat_bubble_outline),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        ChatThreadScreen(peerPubkeyHex: c.pubkeyHex),
+                  ),
+                ),
               );
             },
           );

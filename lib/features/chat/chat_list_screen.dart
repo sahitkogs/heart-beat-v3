@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../chat/chat_providers.dart';
 import '../../data/app_database.dart';
+import 'chat_thread_screen.dart';
 
 class ChatListScreen extends ConsumerWidget {
   const ChatListScreen({super.key});
@@ -54,9 +55,11 @@ class _ChatTile extends StatelessWidget {
       title: Text(title, style: const TextStyle(fontFamily: 'monospace')),
       subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
       trailing: Text(trailing, style: Theme.of(context).textTheme.bodySmall),
-      onTap: () {
-        // TODO(task 22): push ChatThreadScreen(peerPubkeyHex: chat.peerPubkeyHex)
-      },
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ChatThreadScreen(peerPubkeyHex: chat.peerPubkeyHex),
+        ),
+      ),
     );
   }
 

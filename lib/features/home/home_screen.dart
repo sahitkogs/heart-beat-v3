@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../chat/chat_list_screen.dart';
 import '../contacts/contacts_screen.dart';
 import '../identity/identity_screen.dart';
 
@@ -37,6 +38,17 @@ class HomeScreen extends ConsumerWidget {
                 label: const Padding(
                   padding: EdgeInsets.symmetric(vertical: 12),
                   child: Text('Contacts'),
+                ),
+              ),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ChatListScreen()),
+                ),
+                icon: const Icon(Icons.chat_bubble),
+                label: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Text('Chats'),
                 ),
               ),
             ],
