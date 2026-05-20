@@ -63,4 +63,23 @@ class ChatsDao extends DatabaseAccessor<AppDatabase> with _$ChatsDaoMixin {
       ),
     );
   }
+
+  Future<Chat?> getChat(String peerPubkeyHex) =>
+      (select(chats)..where((t) => t.peerPubkeyHex.equals(peerPubkeyHex)))
+          .getSingleOrNull();
+
+  Future<void> markBundleSent(String peerPubkeyHex, {DateTime? at}) async {
+    await (update(chats)..where((t) => t.peerPubkeyHex.equals(peerPubkeyHex)))
+        .write(ChatsCompanion(bundleSentAt: Value(at ?? DateTime.now())));
+  }
+
+  Future<void> markPeerBundleReceived(String peerPubkeyHex, {DateTime? at}) async {
+    await (update(chats)..where((t) => t.peerPubkeyHex.equals(peerPubkeyHex)))
+        .write(ChatsCompanion(peerBundleReceivedAt: Value(at ?? DateTime.now())));
+  }
+
+  Future<void> clearBundleSent(String peerPubkeyHex) async {
+    await (update(chats)..where((t) => t.peerPubkeyHex.equals(peerPubkeyHex)))
+        .write(const ChatsCompanion(bundleSentAt: Value(null)));
+  }
 }
