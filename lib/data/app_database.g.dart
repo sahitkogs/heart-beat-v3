@@ -1237,6 +1237,1221 @@ class LamportSeqCompanion extends UpdateCompanion<LamportSeqData> {
   }
 }
 
+class $SignalIdentityTable extends SignalIdentity
+    with TableInfo<$SignalIdentityTable, SignalIdentityData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SignalIdentityTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _identityKeyPairMeta = const VerificationMeta(
+    'identityKeyPair',
+  );
+  @override
+  late final GeneratedColumn<Uint8List> identityKeyPair =
+      GeneratedColumn<Uint8List>(
+        'identity_key_pair',
+        aliasedName,
+        false,
+        type: DriftSqlType.blob,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _registrationIdMeta = const VerificationMeta(
+    'registrationId',
+  );
+  @override
+  late final GeneratedColumn<int> registrationId = GeneratedColumn<int>(
+    'registration_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deviceIdMeta = const VerificationMeta(
+    'deviceId',
+  );
+  @override
+  late final GeneratedColumn<int> deviceId = GeneratedColumn<int>(
+    'device_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    identityKeyPair,
+    registrationId,
+    deviceId,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'signal_identity';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SignalIdentityData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('identity_key_pair')) {
+      context.handle(
+        _identityKeyPairMeta,
+        identityKeyPair.isAcceptableOrUnknown(
+          data['identity_key_pair']!,
+          _identityKeyPairMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_identityKeyPairMeta);
+    }
+    if (data.containsKey('registration_id')) {
+      context.handle(
+        _registrationIdMeta,
+        registrationId.isAcceptableOrUnknown(
+          data['registration_id']!,
+          _registrationIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_registrationIdMeta);
+    }
+    if (data.containsKey('device_id')) {
+      context.handle(
+        _deviceIdMeta,
+        deviceId.isAcceptableOrUnknown(data['device_id']!, _deviceIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_deviceIdMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SignalIdentityData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SignalIdentityData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      identityKeyPair: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}identity_key_pair'],
+      )!,
+      registrationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}registration_id'],
+      )!,
+      deviceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}device_id'],
+      )!,
+    );
+  }
+
+  @override
+  $SignalIdentityTable createAlias(String alias) {
+    return $SignalIdentityTable(attachedDatabase, alias);
+  }
+}
+
+class SignalIdentityData extends DataClass
+    implements Insertable<SignalIdentityData> {
+  final int id;
+  final Uint8List identityKeyPair;
+  final int registrationId;
+  final int deviceId;
+  const SignalIdentityData({
+    required this.id,
+    required this.identityKeyPair,
+    required this.registrationId,
+    required this.deviceId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['identity_key_pair'] = Variable<Uint8List>(identityKeyPair);
+    map['registration_id'] = Variable<int>(registrationId);
+    map['device_id'] = Variable<int>(deviceId);
+    return map;
+  }
+
+  SignalIdentityCompanion toCompanion(bool nullToAbsent) {
+    return SignalIdentityCompanion(
+      id: Value(id),
+      identityKeyPair: Value(identityKeyPair),
+      registrationId: Value(registrationId),
+      deviceId: Value(deviceId),
+    );
+  }
+
+  factory SignalIdentityData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SignalIdentityData(
+      id: serializer.fromJson<int>(json['id']),
+      identityKeyPair: serializer.fromJson<Uint8List>(json['identityKeyPair']),
+      registrationId: serializer.fromJson<int>(json['registrationId']),
+      deviceId: serializer.fromJson<int>(json['deviceId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'identityKeyPair': serializer.toJson<Uint8List>(identityKeyPair),
+      'registrationId': serializer.toJson<int>(registrationId),
+      'deviceId': serializer.toJson<int>(deviceId),
+    };
+  }
+
+  SignalIdentityData copyWith({
+    int? id,
+    Uint8List? identityKeyPair,
+    int? registrationId,
+    int? deviceId,
+  }) => SignalIdentityData(
+    id: id ?? this.id,
+    identityKeyPair: identityKeyPair ?? this.identityKeyPair,
+    registrationId: registrationId ?? this.registrationId,
+    deviceId: deviceId ?? this.deviceId,
+  );
+  SignalIdentityData copyWithCompanion(SignalIdentityCompanion data) {
+    return SignalIdentityData(
+      id: data.id.present ? data.id.value : this.id,
+      identityKeyPair: data.identityKeyPair.present
+          ? data.identityKeyPair.value
+          : this.identityKeyPair,
+      registrationId: data.registrationId.present
+          ? data.registrationId.value
+          : this.registrationId,
+      deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SignalIdentityData(')
+          ..write('id: $id, ')
+          ..write('identityKeyPair: $identityKeyPair, ')
+          ..write('registrationId: $registrationId, ')
+          ..write('deviceId: $deviceId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    $driftBlobEquality.hash(identityKeyPair),
+    registrationId,
+    deviceId,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SignalIdentityData &&
+          other.id == this.id &&
+          $driftBlobEquality.equals(
+            other.identityKeyPair,
+            this.identityKeyPair,
+          ) &&
+          other.registrationId == this.registrationId &&
+          other.deviceId == this.deviceId);
+}
+
+class SignalIdentityCompanion extends UpdateCompanion<SignalIdentityData> {
+  final Value<int> id;
+  final Value<Uint8List> identityKeyPair;
+  final Value<int> registrationId;
+  final Value<int> deviceId;
+  const SignalIdentityCompanion({
+    this.id = const Value.absent(),
+    this.identityKeyPair = const Value.absent(),
+    this.registrationId = const Value.absent(),
+    this.deviceId = const Value.absent(),
+  });
+  SignalIdentityCompanion.insert({
+    this.id = const Value.absent(),
+    required Uint8List identityKeyPair,
+    required int registrationId,
+    required int deviceId,
+  }) : identityKeyPair = Value(identityKeyPair),
+       registrationId = Value(registrationId),
+       deviceId = Value(deviceId);
+  static Insertable<SignalIdentityData> custom({
+    Expression<int>? id,
+    Expression<Uint8List>? identityKeyPair,
+    Expression<int>? registrationId,
+    Expression<int>? deviceId,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (identityKeyPair != null) 'identity_key_pair': identityKeyPair,
+      if (registrationId != null) 'registration_id': registrationId,
+      if (deviceId != null) 'device_id': deviceId,
+    });
+  }
+
+  SignalIdentityCompanion copyWith({
+    Value<int>? id,
+    Value<Uint8List>? identityKeyPair,
+    Value<int>? registrationId,
+    Value<int>? deviceId,
+  }) {
+    return SignalIdentityCompanion(
+      id: id ?? this.id,
+      identityKeyPair: identityKeyPair ?? this.identityKeyPair,
+      registrationId: registrationId ?? this.registrationId,
+      deviceId: deviceId ?? this.deviceId,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (identityKeyPair.present) {
+      map['identity_key_pair'] = Variable<Uint8List>(identityKeyPair.value);
+    }
+    if (registrationId.present) {
+      map['registration_id'] = Variable<int>(registrationId.value);
+    }
+    if (deviceId.present) {
+      map['device_id'] = Variable<int>(deviceId.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SignalIdentityCompanion(')
+          ..write('id: $id, ')
+          ..write('identityKeyPair: $identityKeyPair, ')
+          ..write('registrationId: $registrationId, ')
+          ..write('deviceId: $deviceId')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $SignalPreKeysTable extends SignalPreKeys
+    with TableInfo<$SignalPreKeysTable, SignalPreKey> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SignalPreKeysTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyIdMeta = const VerificationMeta('keyId');
+  @override
+  late final GeneratedColumn<int> keyId = GeneratedColumn<int>(
+    'key_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _recordMeta = const VerificationMeta('record');
+  @override
+  late final GeneratedColumn<Uint8List> record = GeneratedColumn<Uint8List>(
+    'record',
+    aliasedName,
+    false,
+    type: DriftSqlType.blob,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [keyId, record];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'signal_pre_keys';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SignalPreKey> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key_id')) {
+      context.handle(
+        _keyIdMeta,
+        keyId.isAcceptableOrUnknown(data['key_id']!, _keyIdMeta),
+      );
+    }
+    if (data.containsKey('record')) {
+      context.handle(
+        _recordMeta,
+        record.isAcceptableOrUnknown(data['record']!, _recordMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_recordMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {keyId};
+  @override
+  SignalPreKey map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SignalPreKey(
+      keyId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}key_id'],
+      )!,
+      record: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}record'],
+      )!,
+    );
+  }
+
+  @override
+  $SignalPreKeysTable createAlias(String alias) {
+    return $SignalPreKeysTable(attachedDatabase, alias);
+  }
+}
+
+class SignalPreKey extends DataClass implements Insertable<SignalPreKey> {
+  final int keyId;
+  final Uint8List record;
+  const SignalPreKey({required this.keyId, required this.record});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key_id'] = Variable<int>(keyId);
+    map['record'] = Variable<Uint8List>(record);
+    return map;
+  }
+
+  SignalPreKeysCompanion toCompanion(bool nullToAbsent) {
+    return SignalPreKeysCompanion(keyId: Value(keyId), record: Value(record));
+  }
+
+  factory SignalPreKey.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SignalPreKey(
+      keyId: serializer.fromJson<int>(json['keyId']),
+      record: serializer.fromJson<Uint8List>(json['record']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'keyId': serializer.toJson<int>(keyId),
+      'record': serializer.toJson<Uint8List>(record),
+    };
+  }
+
+  SignalPreKey copyWith({int? keyId, Uint8List? record}) =>
+      SignalPreKey(keyId: keyId ?? this.keyId, record: record ?? this.record);
+  SignalPreKey copyWithCompanion(SignalPreKeysCompanion data) {
+    return SignalPreKey(
+      keyId: data.keyId.present ? data.keyId.value : this.keyId,
+      record: data.record.present ? data.record.value : this.record,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SignalPreKey(')
+          ..write('keyId: $keyId, ')
+          ..write('record: $record')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(keyId, $driftBlobEquality.hash(record));
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SignalPreKey &&
+          other.keyId == this.keyId &&
+          $driftBlobEquality.equals(other.record, this.record));
+}
+
+class SignalPreKeysCompanion extends UpdateCompanion<SignalPreKey> {
+  final Value<int> keyId;
+  final Value<Uint8List> record;
+  const SignalPreKeysCompanion({
+    this.keyId = const Value.absent(),
+    this.record = const Value.absent(),
+  });
+  SignalPreKeysCompanion.insert({
+    this.keyId = const Value.absent(),
+    required Uint8List record,
+  }) : record = Value(record);
+  static Insertable<SignalPreKey> custom({
+    Expression<int>? keyId,
+    Expression<Uint8List>? record,
+  }) {
+    return RawValuesInsertable({
+      if (keyId != null) 'key_id': keyId,
+      if (record != null) 'record': record,
+    });
+  }
+
+  SignalPreKeysCompanion copyWith({
+    Value<int>? keyId,
+    Value<Uint8List>? record,
+  }) {
+    return SignalPreKeysCompanion(
+      keyId: keyId ?? this.keyId,
+      record: record ?? this.record,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (keyId.present) {
+      map['key_id'] = Variable<int>(keyId.value);
+    }
+    if (record.present) {
+      map['record'] = Variable<Uint8List>(record.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SignalPreKeysCompanion(')
+          ..write('keyId: $keyId, ')
+          ..write('record: $record')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $SignalSignedPreKeysTable extends SignalSignedPreKeys
+    with TableInfo<$SignalSignedPreKeysTable, SignalSignedPreKey> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SignalSignedPreKeysTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyIdMeta = const VerificationMeta('keyId');
+  @override
+  late final GeneratedColumn<int> keyId = GeneratedColumn<int>(
+    'key_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _recordMeta = const VerificationMeta('record');
+  @override
+  late final GeneratedColumn<Uint8List> record = GeneratedColumn<Uint8List>(
+    'record',
+    aliasedName,
+    false,
+    type: DriftSqlType.blob,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [keyId, record];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'signal_signed_pre_keys';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SignalSignedPreKey> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key_id')) {
+      context.handle(
+        _keyIdMeta,
+        keyId.isAcceptableOrUnknown(data['key_id']!, _keyIdMeta),
+      );
+    }
+    if (data.containsKey('record')) {
+      context.handle(
+        _recordMeta,
+        record.isAcceptableOrUnknown(data['record']!, _recordMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_recordMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {keyId};
+  @override
+  SignalSignedPreKey map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SignalSignedPreKey(
+      keyId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}key_id'],
+      )!,
+      record: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}record'],
+      )!,
+    );
+  }
+
+  @override
+  $SignalSignedPreKeysTable createAlias(String alias) {
+    return $SignalSignedPreKeysTable(attachedDatabase, alias);
+  }
+}
+
+class SignalSignedPreKey extends DataClass
+    implements Insertable<SignalSignedPreKey> {
+  final int keyId;
+  final Uint8List record;
+  const SignalSignedPreKey({required this.keyId, required this.record});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key_id'] = Variable<int>(keyId);
+    map['record'] = Variable<Uint8List>(record);
+    return map;
+  }
+
+  SignalSignedPreKeysCompanion toCompanion(bool nullToAbsent) {
+    return SignalSignedPreKeysCompanion(
+      keyId: Value(keyId),
+      record: Value(record),
+    );
+  }
+
+  factory SignalSignedPreKey.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SignalSignedPreKey(
+      keyId: serializer.fromJson<int>(json['keyId']),
+      record: serializer.fromJson<Uint8List>(json['record']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'keyId': serializer.toJson<int>(keyId),
+      'record': serializer.toJson<Uint8List>(record),
+    };
+  }
+
+  SignalSignedPreKey copyWith({int? keyId, Uint8List? record}) =>
+      SignalSignedPreKey(
+        keyId: keyId ?? this.keyId,
+        record: record ?? this.record,
+      );
+  SignalSignedPreKey copyWithCompanion(SignalSignedPreKeysCompanion data) {
+    return SignalSignedPreKey(
+      keyId: data.keyId.present ? data.keyId.value : this.keyId,
+      record: data.record.present ? data.record.value : this.record,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SignalSignedPreKey(')
+          ..write('keyId: $keyId, ')
+          ..write('record: $record')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(keyId, $driftBlobEquality.hash(record));
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SignalSignedPreKey &&
+          other.keyId == this.keyId &&
+          $driftBlobEquality.equals(other.record, this.record));
+}
+
+class SignalSignedPreKeysCompanion extends UpdateCompanion<SignalSignedPreKey> {
+  final Value<int> keyId;
+  final Value<Uint8List> record;
+  const SignalSignedPreKeysCompanion({
+    this.keyId = const Value.absent(),
+    this.record = const Value.absent(),
+  });
+  SignalSignedPreKeysCompanion.insert({
+    this.keyId = const Value.absent(),
+    required Uint8List record,
+  }) : record = Value(record);
+  static Insertable<SignalSignedPreKey> custom({
+    Expression<int>? keyId,
+    Expression<Uint8List>? record,
+  }) {
+    return RawValuesInsertable({
+      if (keyId != null) 'key_id': keyId,
+      if (record != null) 'record': record,
+    });
+  }
+
+  SignalSignedPreKeysCompanion copyWith({
+    Value<int>? keyId,
+    Value<Uint8List>? record,
+  }) {
+    return SignalSignedPreKeysCompanion(
+      keyId: keyId ?? this.keyId,
+      record: record ?? this.record,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (keyId.present) {
+      map['key_id'] = Variable<int>(keyId.value);
+    }
+    if (record.present) {
+      map['record'] = Variable<Uint8List>(record.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SignalSignedPreKeysCompanion(')
+          ..write('keyId: $keyId, ')
+          ..write('record: $record')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $SignalSessionsTable extends SignalSessions
+    with TableInfo<$SignalSessionsTable, SignalSession> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SignalSessionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _addressMeta = const VerificationMeta(
+    'address',
+  );
+  @override
+  late final GeneratedColumn<String> address = GeneratedColumn<String>(
+    'address',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _recordMeta = const VerificationMeta('record');
+  @override
+  late final GeneratedColumn<Uint8List> record = GeneratedColumn<Uint8List>(
+    'record',
+    aliasedName,
+    false,
+    type: DriftSqlType.blob,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [address, record];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'signal_sessions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SignalSession> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('address')) {
+      context.handle(
+        _addressMeta,
+        address.isAcceptableOrUnknown(data['address']!, _addressMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_addressMeta);
+    }
+    if (data.containsKey('record')) {
+      context.handle(
+        _recordMeta,
+        record.isAcceptableOrUnknown(data['record']!, _recordMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_recordMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {address};
+  @override
+  SignalSession map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SignalSession(
+      address: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}address'],
+      )!,
+      record: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}record'],
+      )!,
+    );
+  }
+
+  @override
+  $SignalSessionsTable createAlias(String alias) {
+    return $SignalSessionsTable(attachedDatabase, alias);
+  }
+}
+
+class SignalSession extends DataClass implements Insertable<SignalSession> {
+  final String address;
+  final Uint8List record;
+  const SignalSession({required this.address, required this.record});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['address'] = Variable<String>(address);
+    map['record'] = Variable<Uint8List>(record);
+    return map;
+  }
+
+  SignalSessionsCompanion toCompanion(bool nullToAbsent) {
+    return SignalSessionsCompanion(
+      address: Value(address),
+      record: Value(record),
+    );
+  }
+
+  factory SignalSession.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SignalSession(
+      address: serializer.fromJson<String>(json['address']),
+      record: serializer.fromJson<Uint8List>(json['record']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'address': serializer.toJson<String>(address),
+      'record': serializer.toJson<Uint8List>(record),
+    };
+  }
+
+  SignalSession copyWith({String? address, Uint8List? record}) => SignalSession(
+    address: address ?? this.address,
+    record: record ?? this.record,
+  );
+  SignalSession copyWithCompanion(SignalSessionsCompanion data) {
+    return SignalSession(
+      address: data.address.present ? data.address.value : this.address,
+      record: data.record.present ? data.record.value : this.record,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SignalSession(')
+          ..write('address: $address, ')
+          ..write('record: $record')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(address, $driftBlobEquality.hash(record));
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SignalSession &&
+          other.address == this.address &&
+          $driftBlobEquality.equals(other.record, this.record));
+}
+
+class SignalSessionsCompanion extends UpdateCompanion<SignalSession> {
+  final Value<String> address;
+  final Value<Uint8List> record;
+  final Value<int> rowid;
+  const SignalSessionsCompanion({
+    this.address = const Value.absent(),
+    this.record = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SignalSessionsCompanion.insert({
+    required String address,
+    required Uint8List record,
+    this.rowid = const Value.absent(),
+  }) : address = Value(address),
+       record = Value(record);
+  static Insertable<SignalSession> custom({
+    Expression<String>? address,
+    Expression<Uint8List>? record,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (address != null) 'address': address,
+      if (record != null) 'record': record,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SignalSessionsCompanion copyWith({
+    Value<String>? address,
+    Value<Uint8List>? record,
+    Value<int>? rowid,
+  }) {
+    return SignalSessionsCompanion(
+      address: address ?? this.address,
+      record: record ?? this.record,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (address.present) {
+      map['address'] = Variable<String>(address.value);
+    }
+    if (record.present) {
+      map['record'] = Variable<Uint8List>(record.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SignalSessionsCompanion(')
+          ..write('address: $address, ')
+          ..write('record: $record, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $SignalPeerIdentitiesTable extends SignalPeerIdentities
+    with TableInfo<$SignalPeerIdentitiesTable, SignalPeerIdentity> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SignalPeerIdentitiesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _peerPubkeyHexMeta = const VerificationMeta(
+    'peerPubkeyHex',
+  );
+  @override
+  late final GeneratedColumn<String> peerPubkeyHex = GeneratedColumn<String>(
+    'peer_pubkey_hex',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _identityKeyMeta = const VerificationMeta(
+    'identityKey',
+  );
+  @override
+  late final GeneratedColumn<Uint8List> identityKey =
+      GeneratedColumn<Uint8List>(
+        'identity_key',
+        aliasedName,
+        false,
+        type: DriftSqlType.blob,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _trustedMeta = const VerificationMeta(
+    'trusted',
+  );
+  @override
+  late final GeneratedColumn<bool> trusted = GeneratedColumn<bool>(
+    'trusted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("trusted" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [peerPubkeyHex, identityKey, trusted];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'signal_peer_identities';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SignalPeerIdentity> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('peer_pubkey_hex')) {
+      context.handle(
+        _peerPubkeyHexMeta,
+        peerPubkeyHex.isAcceptableOrUnknown(
+          data['peer_pubkey_hex']!,
+          _peerPubkeyHexMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_peerPubkeyHexMeta);
+    }
+    if (data.containsKey('identity_key')) {
+      context.handle(
+        _identityKeyMeta,
+        identityKey.isAcceptableOrUnknown(
+          data['identity_key']!,
+          _identityKeyMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_identityKeyMeta);
+    }
+    if (data.containsKey('trusted')) {
+      context.handle(
+        _trustedMeta,
+        trusted.isAcceptableOrUnknown(data['trusted']!, _trustedMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {peerPubkeyHex};
+  @override
+  SignalPeerIdentity map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SignalPeerIdentity(
+      peerPubkeyHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}peer_pubkey_hex'],
+      )!,
+      identityKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}identity_key'],
+      )!,
+      trusted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}trusted'],
+      )!,
+    );
+  }
+
+  @override
+  $SignalPeerIdentitiesTable createAlias(String alias) {
+    return $SignalPeerIdentitiesTable(attachedDatabase, alias);
+  }
+}
+
+class SignalPeerIdentity extends DataClass
+    implements Insertable<SignalPeerIdentity> {
+  final String peerPubkeyHex;
+  final Uint8List identityKey;
+  final bool trusted;
+  const SignalPeerIdentity({
+    required this.peerPubkeyHex,
+    required this.identityKey,
+    required this.trusted,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['peer_pubkey_hex'] = Variable<String>(peerPubkeyHex);
+    map['identity_key'] = Variable<Uint8List>(identityKey);
+    map['trusted'] = Variable<bool>(trusted);
+    return map;
+  }
+
+  SignalPeerIdentitiesCompanion toCompanion(bool nullToAbsent) {
+    return SignalPeerIdentitiesCompanion(
+      peerPubkeyHex: Value(peerPubkeyHex),
+      identityKey: Value(identityKey),
+      trusted: Value(trusted),
+    );
+  }
+
+  factory SignalPeerIdentity.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SignalPeerIdentity(
+      peerPubkeyHex: serializer.fromJson<String>(json['peerPubkeyHex']),
+      identityKey: serializer.fromJson<Uint8List>(json['identityKey']),
+      trusted: serializer.fromJson<bool>(json['trusted']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'peerPubkeyHex': serializer.toJson<String>(peerPubkeyHex),
+      'identityKey': serializer.toJson<Uint8List>(identityKey),
+      'trusted': serializer.toJson<bool>(trusted),
+    };
+  }
+
+  SignalPeerIdentity copyWith({
+    String? peerPubkeyHex,
+    Uint8List? identityKey,
+    bool? trusted,
+  }) => SignalPeerIdentity(
+    peerPubkeyHex: peerPubkeyHex ?? this.peerPubkeyHex,
+    identityKey: identityKey ?? this.identityKey,
+    trusted: trusted ?? this.trusted,
+  );
+  SignalPeerIdentity copyWithCompanion(SignalPeerIdentitiesCompanion data) {
+    return SignalPeerIdentity(
+      peerPubkeyHex: data.peerPubkeyHex.present
+          ? data.peerPubkeyHex.value
+          : this.peerPubkeyHex,
+      identityKey: data.identityKey.present
+          ? data.identityKey.value
+          : this.identityKey,
+      trusted: data.trusted.present ? data.trusted.value : this.trusted,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SignalPeerIdentity(')
+          ..write('peerPubkeyHex: $peerPubkeyHex, ')
+          ..write('identityKey: $identityKey, ')
+          ..write('trusted: $trusted')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(peerPubkeyHex, $driftBlobEquality.hash(identityKey), trusted);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SignalPeerIdentity &&
+          other.peerPubkeyHex == this.peerPubkeyHex &&
+          $driftBlobEquality.equals(other.identityKey, this.identityKey) &&
+          other.trusted == this.trusted);
+}
+
+class SignalPeerIdentitiesCompanion
+    extends UpdateCompanion<SignalPeerIdentity> {
+  final Value<String> peerPubkeyHex;
+  final Value<Uint8List> identityKey;
+  final Value<bool> trusted;
+  final Value<int> rowid;
+  const SignalPeerIdentitiesCompanion({
+    this.peerPubkeyHex = const Value.absent(),
+    this.identityKey = const Value.absent(),
+    this.trusted = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SignalPeerIdentitiesCompanion.insert({
+    required String peerPubkeyHex,
+    required Uint8List identityKey,
+    this.trusted = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : peerPubkeyHex = Value(peerPubkeyHex),
+       identityKey = Value(identityKey);
+  static Insertable<SignalPeerIdentity> custom({
+    Expression<String>? peerPubkeyHex,
+    Expression<Uint8List>? identityKey,
+    Expression<bool>? trusted,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (peerPubkeyHex != null) 'peer_pubkey_hex': peerPubkeyHex,
+      if (identityKey != null) 'identity_key': identityKey,
+      if (trusted != null) 'trusted': trusted,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SignalPeerIdentitiesCompanion copyWith({
+    Value<String>? peerPubkeyHex,
+    Value<Uint8List>? identityKey,
+    Value<bool>? trusted,
+    Value<int>? rowid,
+  }) {
+    return SignalPeerIdentitiesCompanion(
+      peerPubkeyHex: peerPubkeyHex ?? this.peerPubkeyHex,
+      identityKey: identityKey ?? this.identityKey,
+      trusted: trusted ?? this.trusted,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (peerPubkeyHex.present) {
+      map['peer_pubkey_hex'] = Variable<String>(peerPubkeyHex.value);
+    }
+    if (identityKey.present) {
+      map['identity_key'] = Variable<Uint8List>(identityKey.value);
+    }
+    if (trusted.present) {
+      map['trusted'] = Variable<bool>(trusted.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SignalPeerIdentitiesCompanion(')
+          ..write('peerPubkeyHex: $peerPubkeyHex, ')
+          ..write('identityKey: $identityKey, ')
+          ..write('trusted: $trusted, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -1244,6 +2459,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ChatsTable chats = $ChatsTable(this);
   late final $MessagesTable messages = $MessagesTable(this);
   late final $LamportSeqTable lamportSeq = $LamportSeqTable(this);
+  late final $SignalIdentityTable signalIdentity = $SignalIdentityTable(this);
+  late final $SignalPreKeysTable signalPreKeys = $SignalPreKeysTable(this);
+  late final $SignalSignedPreKeysTable signalSignedPreKeys =
+      $SignalSignedPreKeysTable(this);
+  late final $SignalSessionsTable signalSessions = $SignalSessionsTable(this);
+  late final $SignalPeerIdentitiesTable signalPeerIdentities =
+      $SignalPeerIdentitiesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1253,6 +2475,11 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     chats,
     messages,
     lamportSeq,
+    signalIdentity,
+    signalPreKeys,
+    signalSignedPreKeys,
+    signalSessions,
+    signalPeerIdentities,
   ];
   @override
   DriftDatabaseOptions get options =>
@@ -1955,6 +3182,799 @@ typedef $$LamportSeqTableProcessedTableManager =
       LamportSeqData,
       PrefetchHooks Function()
     >;
+typedef $$SignalIdentityTableCreateCompanionBuilder =
+    SignalIdentityCompanion Function({
+      Value<int> id,
+      required Uint8List identityKeyPair,
+      required int registrationId,
+      required int deviceId,
+    });
+typedef $$SignalIdentityTableUpdateCompanionBuilder =
+    SignalIdentityCompanion Function({
+      Value<int> id,
+      Value<Uint8List> identityKeyPair,
+      Value<int> registrationId,
+      Value<int> deviceId,
+    });
+
+class $$SignalIdentityTableFilterComposer
+    extends Composer<_$AppDatabase, $SignalIdentityTable> {
+  $$SignalIdentityTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get identityKeyPair => $composableBuilder(
+    column: $table.identityKeyPair,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get registrationId => $composableBuilder(
+    column: $table.registrationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SignalIdentityTableOrderingComposer
+    extends Composer<_$AppDatabase, $SignalIdentityTable> {
+  $$SignalIdentityTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<Uint8List> get identityKeyPair => $composableBuilder(
+    column: $table.identityKeyPair,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get registrationId => $composableBuilder(
+    column: $table.registrationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SignalIdentityTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SignalIdentityTable> {
+  $$SignalIdentityTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<Uint8List> get identityKeyPair => $composableBuilder(
+    column: $table.identityKeyPair,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get registrationId => $composableBuilder(
+    column: $table.registrationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get deviceId =>
+      $composableBuilder(column: $table.deviceId, builder: (column) => column);
+}
+
+class $$SignalIdentityTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SignalIdentityTable,
+          SignalIdentityData,
+          $$SignalIdentityTableFilterComposer,
+          $$SignalIdentityTableOrderingComposer,
+          $$SignalIdentityTableAnnotationComposer,
+          $$SignalIdentityTableCreateCompanionBuilder,
+          $$SignalIdentityTableUpdateCompanionBuilder,
+          (
+            SignalIdentityData,
+            BaseReferences<
+              _$AppDatabase,
+              $SignalIdentityTable,
+              SignalIdentityData
+            >,
+          ),
+          SignalIdentityData,
+          PrefetchHooks Function()
+        > {
+  $$SignalIdentityTableTableManager(
+    _$AppDatabase db,
+    $SignalIdentityTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SignalIdentityTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SignalIdentityTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SignalIdentityTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<Uint8List> identityKeyPair = const Value.absent(),
+                Value<int> registrationId = const Value.absent(),
+                Value<int> deviceId = const Value.absent(),
+              }) => SignalIdentityCompanion(
+                id: id,
+                identityKeyPair: identityKeyPair,
+                registrationId: registrationId,
+                deviceId: deviceId,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required Uint8List identityKeyPair,
+                required int registrationId,
+                required int deviceId,
+              }) => SignalIdentityCompanion.insert(
+                id: id,
+                identityKeyPair: identityKeyPair,
+                registrationId: registrationId,
+                deviceId: deviceId,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SignalIdentityTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SignalIdentityTable,
+      SignalIdentityData,
+      $$SignalIdentityTableFilterComposer,
+      $$SignalIdentityTableOrderingComposer,
+      $$SignalIdentityTableAnnotationComposer,
+      $$SignalIdentityTableCreateCompanionBuilder,
+      $$SignalIdentityTableUpdateCompanionBuilder,
+      (
+        SignalIdentityData,
+        BaseReferences<_$AppDatabase, $SignalIdentityTable, SignalIdentityData>,
+      ),
+      SignalIdentityData,
+      PrefetchHooks Function()
+    >;
+typedef $$SignalPreKeysTableCreateCompanionBuilder =
+    SignalPreKeysCompanion Function({
+      Value<int> keyId,
+      required Uint8List record,
+    });
+typedef $$SignalPreKeysTableUpdateCompanionBuilder =
+    SignalPreKeysCompanion Function({
+      Value<int> keyId,
+      Value<Uint8List> record,
+    });
+
+class $$SignalPreKeysTableFilterComposer
+    extends Composer<_$AppDatabase, $SignalPreKeysTable> {
+  $$SignalPreKeysTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get keyId => $composableBuilder(
+    column: $table.keyId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get record => $composableBuilder(
+    column: $table.record,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SignalPreKeysTableOrderingComposer
+    extends Composer<_$AppDatabase, $SignalPreKeysTable> {
+  $$SignalPreKeysTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get keyId => $composableBuilder(
+    column: $table.keyId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<Uint8List> get record => $composableBuilder(
+    column: $table.record,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SignalPreKeysTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SignalPreKeysTable> {
+  $$SignalPreKeysTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get keyId =>
+      $composableBuilder(column: $table.keyId, builder: (column) => column);
+
+  GeneratedColumn<Uint8List> get record =>
+      $composableBuilder(column: $table.record, builder: (column) => column);
+}
+
+class $$SignalPreKeysTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SignalPreKeysTable,
+          SignalPreKey,
+          $$SignalPreKeysTableFilterComposer,
+          $$SignalPreKeysTableOrderingComposer,
+          $$SignalPreKeysTableAnnotationComposer,
+          $$SignalPreKeysTableCreateCompanionBuilder,
+          $$SignalPreKeysTableUpdateCompanionBuilder,
+          (
+            SignalPreKey,
+            BaseReferences<_$AppDatabase, $SignalPreKeysTable, SignalPreKey>,
+          ),
+          SignalPreKey,
+          PrefetchHooks Function()
+        > {
+  $$SignalPreKeysTableTableManager(_$AppDatabase db, $SignalPreKeysTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SignalPreKeysTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SignalPreKeysTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SignalPreKeysTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> keyId = const Value.absent(),
+                Value<Uint8List> record = const Value.absent(),
+              }) => SignalPreKeysCompanion(keyId: keyId, record: record),
+          createCompanionCallback:
+              ({
+                Value<int> keyId = const Value.absent(),
+                required Uint8List record,
+              }) => SignalPreKeysCompanion.insert(keyId: keyId, record: record),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SignalPreKeysTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SignalPreKeysTable,
+      SignalPreKey,
+      $$SignalPreKeysTableFilterComposer,
+      $$SignalPreKeysTableOrderingComposer,
+      $$SignalPreKeysTableAnnotationComposer,
+      $$SignalPreKeysTableCreateCompanionBuilder,
+      $$SignalPreKeysTableUpdateCompanionBuilder,
+      (
+        SignalPreKey,
+        BaseReferences<_$AppDatabase, $SignalPreKeysTable, SignalPreKey>,
+      ),
+      SignalPreKey,
+      PrefetchHooks Function()
+    >;
+typedef $$SignalSignedPreKeysTableCreateCompanionBuilder =
+    SignalSignedPreKeysCompanion Function({
+      Value<int> keyId,
+      required Uint8List record,
+    });
+typedef $$SignalSignedPreKeysTableUpdateCompanionBuilder =
+    SignalSignedPreKeysCompanion Function({
+      Value<int> keyId,
+      Value<Uint8List> record,
+    });
+
+class $$SignalSignedPreKeysTableFilterComposer
+    extends Composer<_$AppDatabase, $SignalSignedPreKeysTable> {
+  $$SignalSignedPreKeysTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get keyId => $composableBuilder(
+    column: $table.keyId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get record => $composableBuilder(
+    column: $table.record,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SignalSignedPreKeysTableOrderingComposer
+    extends Composer<_$AppDatabase, $SignalSignedPreKeysTable> {
+  $$SignalSignedPreKeysTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get keyId => $composableBuilder(
+    column: $table.keyId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<Uint8List> get record => $composableBuilder(
+    column: $table.record,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SignalSignedPreKeysTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SignalSignedPreKeysTable> {
+  $$SignalSignedPreKeysTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get keyId =>
+      $composableBuilder(column: $table.keyId, builder: (column) => column);
+
+  GeneratedColumn<Uint8List> get record =>
+      $composableBuilder(column: $table.record, builder: (column) => column);
+}
+
+class $$SignalSignedPreKeysTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SignalSignedPreKeysTable,
+          SignalSignedPreKey,
+          $$SignalSignedPreKeysTableFilterComposer,
+          $$SignalSignedPreKeysTableOrderingComposer,
+          $$SignalSignedPreKeysTableAnnotationComposer,
+          $$SignalSignedPreKeysTableCreateCompanionBuilder,
+          $$SignalSignedPreKeysTableUpdateCompanionBuilder,
+          (
+            SignalSignedPreKey,
+            BaseReferences<
+              _$AppDatabase,
+              $SignalSignedPreKeysTable,
+              SignalSignedPreKey
+            >,
+          ),
+          SignalSignedPreKey,
+          PrefetchHooks Function()
+        > {
+  $$SignalSignedPreKeysTableTableManager(
+    _$AppDatabase db,
+    $SignalSignedPreKeysTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SignalSignedPreKeysTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SignalSignedPreKeysTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$SignalSignedPreKeysTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> keyId = const Value.absent(),
+                Value<Uint8List> record = const Value.absent(),
+              }) => SignalSignedPreKeysCompanion(keyId: keyId, record: record),
+          createCompanionCallback:
+              ({
+                Value<int> keyId = const Value.absent(),
+                required Uint8List record,
+              }) => SignalSignedPreKeysCompanion.insert(
+                keyId: keyId,
+                record: record,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SignalSignedPreKeysTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SignalSignedPreKeysTable,
+      SignalSignedPreKey,
+      $$SignalSignedPreKeysTableFilterComposer,
+      $$SignalSignedPreKeysTableOrderingComposer,
+      $$SignalSignedPreKeysTableAnnotationComposer,
+      $$SignalSignedPreKeysTableCreateCompanionBuilder,
+      $$SignalSignedPreKeysTableUpdateCompanionBuilder,
+      (
+        SignalSignedPreKey,
+        BaseReferences<
+          _$AppDatabase,
+          $SignalSignedPreKeysTable,
+          SignalSignedPreKey
+        >,
+      ),
+      SignalSignedPreKey,
+      PrefetchHooks Function()
+    >;
+typedef $$SignalSessionsTableCreateCompanionBuilder =
+    SignalSessionsCompanion Function({
+      required String address,
+      required Uint8List record,
+      Value<int> rowid,
+    });
+typedef $$SignalSessionsTableUpdateCompanionBuilder =
+    SignalSessionsCompanion Function({
+      Value<String> address,
+      Value<Uint8List> record,
+      Value<int> rowid,
+    });
+
+class $$SignalSessionsTableFilterComposer
+    extends Composer<_$AppDatabase, $SignalSessionsTable> {
+  $$SignalSessionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get address => $composableBuilder(
+    column: $table.address,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get record => $composableBuilder(
+    column: $table.record,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SignalSessionsTableOrderingComposer
+    extends Composer<_$AppDatabase, $SignalSessionsTable> {
+  $$SignalSessionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get address => $composableBuilder(
+    column: $table.address,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<Uint8List> get record => $composableBuilder(
+    column: $table.record,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SignalSessionsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SignalSessionsTable> {
+  $$SignalSessionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get address =>
+      $composableBuilder(column: $table.address, builder: (column) => column);
+
+  GeneratedColumn<Uint8List> get record =>
+      $composableBuilder(column: $table.record, builder: (column) => column);
+}
+
+class $$SignalSessionsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SignalSessionsTable,
+          SignalSession,
+          $$SignalSessionsTableFilterComposer,
+          $$SignalSessionsTableOrderingComposer,
+          $$SignalSessionsTableAnnotationComposer,
+          $$SignalSessionsTableCreateCompanionBuilder,
+          $$SignalSessionsTableUpdateCompanionBuilder,
+          (
+            SignalSession,
+            BaseReferences<_$AppDatabase, $SignalSessionsTable, SignalSession>,
+          ),
+          SignalSession,
+          PrefetchHooks Function()
+        > {
+  $$SignalSessionsTableTableManager(
+    _$AppDatabase db,
+    $SignalSessionsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SignalSessionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SignalSessionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SignalSessionsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> address = const Value.absent(),
+                Value<Uint8List> record = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SignalSessionsCompanion(
+                address: address,
+                record: record,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String address,
+                required Uint8List record,
+                Value<int> rowid = const Value.absent(),
+              }) => SignalSessionsCompanion.insert(
+                address: address,
+                record: record,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SignalSessionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SignalSessionsTable,
+      SignalSession,
+      $$SignalSessionsTableFilterComposer,
+      $$SignalSessionsTableOrderingComposer,
+      $$SignalSessionsTableAnnotationComposer,
+      $$SignalSessionsTableCreateCompanionBuilder,
+      $$SignalSessionsTableUpdateCompanionBuilder,
+      (
+        SignalSession,
+        BaseReferences<_$AppDatabase, $SignalSessionsTable, SignalSession>,
+      ),
+      SignalSession,
+      PrefetchHooks Function()
+    >;
+typedef $$SignalPeerIdentitiesTableCreateCompanionBuilder =
+    SignalPeerIdentitiesCompanion Function({
+      required String peerPubkeyHex,
+      required Uint8List identityKey,
+      Value<bool> trusted,
+      Value<int> rowid,
+    });
+typedef $$SignalPeerIdentitiesTableUpdateCompanionBuilder =
+    SignalPeerIdentitiesCompanion Function({
+      Value<String> peerPubkeyHex,
+      Value<Uint8List> identityKey,
+      Value<bool> trusted,
+      Value<int> rowid,
+    });
+
+class $$SignalPeerIdentitiesTableFilterComposer
+    extends Composer<_$AppDatabase, $SignalPeerIdentitiesTable> {
+  $$SignalPeerIdentitiesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get peerPubkeyHex => $composableBuilder(
+    column: $table.peerPubkeyHex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get identityKey => $composableBuilder(
+    column: $table.identityKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get trusted => $composableBuilder(
+    column: $table.trusted,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SignalPeerIdentitiesTableOrderingComposer
+    extends Composer<_$AppDatabase, $SignalPeerIdentitiesTable> {
+  $$SignalPeerIdentitiesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get peerPubkeyHex => $composableBuilder(
+    column: $table.peerPubkeyHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<Uint8List> get identityKey => $composableBuilder(
+    column: $table.identityKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get trusted => $composableBuilder(
+    column: $table.trusted,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SignalPeerIdentitiesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SignalPeerIdentitiesTable> {
+  $$SignalPeerIdentitiesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get peerPubkeyHex => $composableBuilder(
+    column: $table.peerPubkeyHex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<Uint8List> get identityKey => $composableBuilder(
+    column: $table.identityKey,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get trusted =>
+      $composableBuilder(column: $table.trusted, builder: (column) => column);
+}
+
+class $$SignalPeerIdentitiesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SignalPeerIdentitiesTable,
+          SignalPeerIdentity,
+          $$SignalPeerIdentitiesTableFilterComposer,
+          $$SignalPeerIdentitiesTableOrderingComposer,
+          $$SignalPeerIdentitiesTableAnnotationComposer,
+          $$SignalPeerIdentitiesTableCreateCompanionBuilder,
+          $$SignalPeerIdentitiesTableUpdateCompanionBuilder,
+          (
+            SignalPeerIdentity,
+            BaseReferences<
+              _$AppDatabase,
+              $SignalPeerIdentitiesTable,
+              SignalPeerIdentity
+            >,
+          ),
+          SignalPeerIdentity,
+          PrefetchHooks Function()
+        > {
+  $$SignalPeerIdentitiesTableTableManager(
+    _$AppDatabase db,
+    $SignalPeerIdentitiesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SignalPeerIdentitiesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SignalPeerIdentitiesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$SignalPeerIdentitiesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> peerPubkeyHex = const Value.absent(),
+                Value<Uint8List> identityKey = const Value.absent(),
+                Value<bool> trusted = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SignalPeerIdentitiesCompanion(
+                peerPubkeyHex: peerPubkeyHex,
+                identityKey: identityKey,
+                trusted: trusted,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String peerPubkeyHex,
+                required Uint8List identityKey,
+                Value<bool> trusted = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SignalPeerIdentitiesCompanion.insert(
+                peerPubkeyHex: peerPubkeyHex,
+                identityKey: identityKey,
+                trusted: trusted,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SignalPeerIdentitiesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SignalPeerIdentitiesTable,
+      SignalPeerIdentity,
+      $$SignalPeerIdentitiesTableFilterComposer,
+      $$SignalPeerIdentitiesTableOrderingComposer,
+      $$SignalPeerIdentitiesTableAnnotationComposer,
+      $$SignalPeerIdentitiesTableCreateCompanionBuilder,
+      $$SignalPeerIdentitiesTableUpdateCompanionBuilder,
+      (
+        SignalPeerIdentity,
+        BaseReferences<
+          _$AppDatabase,
+          $SignalPeerIdentitiesTable,
+          SignalPeerIdentity
+        >,
+      ),
+      SignalPeerIdentity,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -1967,4 +3987,14 @@ class $AppDatabaseManager {
       $$MessagesTableTableManager(_db, _db.messages);
   $$LamportSeqTableTableManager get lamportSeq =>
       $$LamportSeqTableTableManager(_db, _db.lamportSeq);
+  $$SignalIdentityTableTableManager get signalIdentity =>
+      $$SignalIdentityTableTableManager(_db, _db.signalIdentity);
+  $$SignalPreKeysTableTableManager get signalPreKeys =>
+      $$SignalPreKeysTableTableManager(_db, _db.signalPreKeys);
+  $$SignalSignedPreKeysTableTableManager get signalSignedPreKeys =>
+      $$SignalSignedPreKeysTableTableManager(_db, _db.signalSignedPreKeys);
+  $$SignalSessionsTableTableManager get signalSessions =>
+      $$SignalSessionsTableTableManager(_db, _db.signalSessions);
+  $$SignalPeerIdentitiesTableTableManager get signalPeerIdentities =>
+      $$SignalPeerIdentitiesTableTableManager(_db, _db.signalPeerIdentities);
 }
