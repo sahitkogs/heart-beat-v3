@@ -1,6 +1,13 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+
+import '../core/hex_codec.dart';
+
+/// Length in bytes of the sender pubkey prefix in a wake payload. Ed25519
+/// public keys are 32 bytes — same as everywhere else in Heartbeat.
+const int wakeSenderPubkeyBytes = 32;
 
 /// Outcome of a /v1/wake call.
 enum WakeStatus {
@@ -32,13 +39,28 @@ class WakeClient {
   final Uri baseUri;
   final http.Client _http;
 
+  /// Wake [recipientPubkeyHex] with [envelope] (the regular EnvelopeWire
+  /// bytes). The sender's pubkey is prefixed to the payload because, unlike
+  /// the relay's `deliver` frame, FCM data has no `from` field — the
+  /// background isolate strips the first 32 bytes to know which libsignal
+  /// session to decrypt with.
   Future<WakeResult> wake({
+    required String senderPubkeyHex,
     required String recipientPubkeyHex,
     required List<int> envelope,
   }) async {
+    final senderBytes = hexToBytes(senderPubkeyHex);
+    if (senderBytes.length != wakeSenderPubkeyBytes) {
+      throw ArgumentError(
+        'sender pubkey must decode to $wakeSenderPubkeyBytes bytes',
+      );
+    }
+    final wakePayload = Uint8List(senderBytes.length + envelope.length)
+      ..setRange(0, senderBytes.length, senderBytes)
+      ..setRange(senderBytes.length, senderBytes.length + envelope.length, envelope);
     final body = jsonEncode({
       'recipient_pubkey': recipientPubkeyHex,
-      'opaque_payload': base64Encode(envelope),
+      'opaque_payload': base64Encode(wakePayload),
     });
     final url = baseUri.resolve('/v1/wake');
 

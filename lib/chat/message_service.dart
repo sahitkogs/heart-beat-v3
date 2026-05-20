@@ -164,6 +164,7 @@ class MessageService {
     }
     _log('wake_dispatching peer=${_short(peer)} envBytes=${envelope.length}');
     final result = await wakeClient.wake(
+      senderPubkeyHex: myPubkeyHex,
       recipientPubkeyHex: peer,
       envelope: envelope,
     );

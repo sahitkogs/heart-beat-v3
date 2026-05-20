@@ -64,16 +64,18 @@ class _FakeWakeClient extends WakeClient {
 
   @override
   Future<WakeResult> wake({
+    required String senderPubkeyHex,
     required String recipientPubkeyHex,
     required List<int> envelope,
   }) async {
-    calls.add(_WakeCall(recipientPubkeyHex, envelope));
+    calls.add(_WakeCall(senderPubkeyHex, recipientPubkeyHex, envelope));
     return _respond();
   }
 }
 
 class _WakeCall {
-  _WakeCall(this.peer, this.envelope);
+  _WakeCall(this.sender, this.peer, this.envelope);
+  final String sender;
   final String peer;
   final List<int> envelope;
 }
@@ -379,6 +381,7 @@ void main() {
 
       expect(wake.calls, hasLength(1));
       expect(wake.calls.single.peer, peerPub);
+      expect(wake.calls.single.sender, myPub);
       expect(wake.calls.single.envelope, sentMessage,
           reason: 'wake should carry the original encrypted envelope so the '
               'background isolate can decrypt it cold');
