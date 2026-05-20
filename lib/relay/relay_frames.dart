@@ -26,6 +26,7 @@ sealed class RelayFrame {
         return ErrorFrame(
           code: map['code'] as String,
           message: (map['message'] as String?) ?? '',
+          toPubkeyHex: map['to'] as String?,
         );
       default:
         return UnknownFrame(type: type, raw: raw);
@@ -64,9 +65,13 @@ class OnlineStatusFrame extends RelayFrame {
 }
 
 class ErrorFrame extends RelayFrame {
-  ErrorFrame({required this.code, required this.message});
+  ErrorFrame({required this.code, required this.message, this.toPubkeyHex});
   final String code;
   final String message;
+  // The intended recipient that triggered this error, when the server sets
+  // it (e.g. `recipient_offline` carries the offline peer's pubkey here).
+  // Null for errors that aren't about a specific peer.
+  final String? toPubkeyHex;
 }
 
 class UnknownFrame extends RelayFrame {

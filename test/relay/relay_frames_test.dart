@@ -29,6 +29,21 @@ void main() {
       final e = f as ErrorFrame;
       expect(e.code, 'recipient_offline');
       expect(e.message, 'bob');
+      expect(e.toPubkeyHex, isNull);
+    });
+
+    test('parses "error" frame with `to` field', () {
+      final raw = jsonEncode({
+        'type': 'error',
+        'code': 'recipient_offline',
+        'message': '',
+        'to': 'bob-pub-hex',
+      });
+      final f = RelayFrame.parse(raw);
+      expect(f, isA<ErrorFrame>());
+      final e = f as ErrorFrame;
+      expect(e.code, 'recipient_offline');
+      expect(e.toPubkeyHex, 'bob-pub-hex');
     });
 
     test('parses "pong" frame', () {
