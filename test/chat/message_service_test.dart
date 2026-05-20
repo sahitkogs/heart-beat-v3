@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:app_v3/chat/message_service.dart';
 import 'package:app_v3/chat/pre_key_bootstrap.dart';
@@ -10,6 +11,7 @@ import 'package:app_v3/relay/relay_frames.dart';
 import 'package:app_v3/services/crypto_pre_key_bundle.dart';
 import 'package:app_v3/services/crypto_service.dart';
 import 'package:app_v3/services/signing_service.dart';
+import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -103,6 +105,11 @@ class _FakeCrypto implements CryptoService {
 }
 
 void main() {
+  // The restart test opens two AppDatabase instances over the same file —
+  // suppress drift's "multiple databases" warning so real failures stay
+  // visible.
+  driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+
   late AppDatabase db;
   late ChatsDao dao;
   late _FakeCrypto crypto;
@@ -293,5 +300,82 @@ void main() {
     final chats = await dao.watchChats().first;
     expect(chats.length, 1);
     expect(chats.first.peerPubkeyHex, peerPub);
+  });
+
+  group('bundle-exchange state persists across restart (T3.4)', () {
+    late Directory tempDir;
+    late File dbFile;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('hb_msg_service_test_');
+      dbFile = File('${tempDir.path}/hb_v3.sqlite');
+    });
+
+    tearDown(() async {
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    test('session 2 over the same DB does not re-send our bundle and does not '
+        're-queue messages', () async {
+      // ---- Session 1: full bundle exchange ----
+      final db1 = AppDatabase.forTesting(NativeDatabase(dbFile));
+      final dao1 = ChatsDao(db1);
+      final crypto1 = _FakeCrypto();
+      final relay1 = _FakeRelay();
+      final service1 = MessageService(
+        crypto: crypto1,
+        relay: relay1,
+        dao: dao1,
+        myPubkeyHex: myPub,
+      );
+
+      await service1.openChat(peerPub);
+      relay1.emit(DeliverFrame(
+        fromPubkeyHex: peerPub,
+        envelope: EnvelopeWire.wrapPreKeyBundle(peerBundle()),
+      ));
+      await drainMicrotasks();
+
+      // Sanity: session 1 marked both flags in drift.
+      final row1 = await dao1.getChat(peerPub);
+      expect(row1?.bundleSentAt, isNotNull);
+      expect(row1?.peerBundleReceivedAt, isNotNull);
+
+      await service1.dispose();
+      await relay1.dispose();
+      await db1.close();
+
+      // ---- Session 2: fresh in-process objects over same DB file ----
+      final db2 = AppDatabase.forTesting(NativeDatabase(dbFile));
+      final dao2 = ChatsDao(db2);
+      final crypto2 = _FakeCrypto();
+      final relay2 = _FakeRelay();
+      final service2 = MessageService(
+        crypto: crypto2,
+        relay: relay2,
+        dao: dao2,
+        myPubkeyHex: myPub,
+      );
+
+      // openChat in session 2 must NOT emit a bundle because bundleSentAt
+      // already non-null — the whole point of T3.3.
+      await service2.openChat(peerPub);
+      expect(relay2.sent, isEmpty);
+
+      // sendText must NOT queue because peerBundleReceivedAt already non-null;
+      // it should encrypt and send immediately.
+      await service2.sendText(peerPubkeyHex: peerPub, body: 'after restart');
+      expect(crypto2.encryptCalls, 1);
+      final msgFrames = relay2.sent
+          .where((f) => f.envelope.first == EnvelopeTag.message)
+          .toList();
+      expect(msgFrames.length, 1);
+
+      await service2.dispose();
+      await relay2.dispose();
+      await db2.close();
+    });
   });
 }
