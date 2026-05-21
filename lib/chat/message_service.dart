@@ -150,8 +150,18 @@ class MessageService {
     final peer = frame.toPubkeyHex!;
     final queue = _unackedByPeer[peer];
     if (queue == null || queue.isEmpty) {
+      // No unacked message envelope means this recipient_offline almost
+      // certainly came from a bundle send (bundle sends don't go into
+      // _unackedByPeer because the wake path skips them). _maybeSendOwnBundle
+      // already marked bundleSent on the relay.send call, so without this
+      // reset we'd never retry — every future openChat/sendText would
+      // short-circuit on "bundle already sent" and the peer never receives
+      // our bundle. Clearing here unblocks the next attempt. The rare
+      // "stale error after peer came online" race only costs us one extra
+      // bundle on the next send.
       _log('wake_skipped no_in_flight peer=${_short(peer)} '
-          '(bundle send or peer already came back online)');
+          '(likely failed bundle send; resetting bundleSent for retry)');
+      await dao.clearBundleSent(peer);
       return;
     }
     final envelope = queue.removeAt(0);

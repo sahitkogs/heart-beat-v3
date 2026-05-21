@@ -400,11 +400,15 @@ void main() {
               'background isolate can decrypt it cold');
     });
 
-    test('no in-flight envelope: bundle-send recipient_offline is logged, '
-        'no wake call', () async {
+    test('no in-flight envelope: bundle-send recipient_offline clears '
+        'bundleSent and skips wake', () async {
       await setUpWith(() => const WakeResult(WakeStatus.ok));
       // openChat sends OUR bundle (NOT pushed to _unackedByPeer).
       await wakeService.openChat(peerPub);
+      final chatAfterSend = await dao.getChat(peerPub);
+      expect(chatAfterSend!.bundleSentAt, isNotNull,
+          reason: 'openChat should mark bundleSent immediately after relay.send');
+
       // Server reports the bundle send hit an offline peer.
       relay.emit(ErrorFrame(
         code: 'recipient_offline',
@@ -415,6 +419,36 @@ void main() {
 
       expect(wake.calls, isEmpty,
           reason: 'bundles do not get wake-fallback — only message envelopes');
+      final chatAfterErr = await dao.getChat(peerPub);
+      expect(chatAfterErr!.bundleSentAt, isNull,
+          reason: 'bundle delivery failed; bundleSent must reset so the next '
+              'openChat retries — otherwise the peer never receives our bundle');
+    });
+
+    test('bundle-send recovery: after a failed bundle send, the next openChat '
+        'retries', () async {
+      await setUpWith(() => const WakeResult(WakeStatus.ok));
+      await wakeService.openChat(peerPub);
+      relay.emit(ErrorFrame(
+        code: 'recipient_offline',
+        message: '',
+        toPubkeyHex: peerPub,
+      ));
+      await drainMicrotasks();
+
+      final bundlesBefore = relay.sent
+          .where((f) => f.envelope.first == EnvelopeTag.preKeyBundle)
+          .length;
+
+      // Re-enter the chat (e.g., user navigates away and back).
+      await wakeService.openChat(peerPub);
+
+      final bundlesAfter = relay.sent
+          .where((f) => f.envelope.first == EnvelopeTag.preKeyBundle)
+          .length;
+      expect(bundlesAfter, bundlesBefore + 1,
+          reason: 'second openChat should re-send the bundle now that the '
+              'first attempt is known to have failed');
     });
 
     test('FCM error: wake is still dispatched once (status surfaced via logs)',
