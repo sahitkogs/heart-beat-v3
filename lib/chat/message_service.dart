@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../core/hex_codec.dart';
 import '../data/app_database.dart';
 import '../data/chats_dao.dart';
+import '../data/contacts_repository.dart';
 import '../data/group_members_dao.dart';
 import '../data/group_ops_log_dao.dart';
 import '../data/peer_bundle_state_dao.dart';
@@ -30,6 +31,7 @@ class MessageService {
     required this.groupMembersDao,
     required this.groupOpsLogDao,
     required this.signing,
+    required this.contactsRepository,
     this.wake,
   }) {
     _sub = relay.inbound.listen(_onInbound);
@@ -43,6 +45,7 @@ class MessageService {
   final GroupMembersDao groupMembersDao;
   final GroupOpsLogDao groupOpsLogDao;
   final SigningService signing;
+  final ContactsRepository contactsRepository;
   // Optional in tests; production wiring always supplies one via the
   // messageServiceProvider. When null, recipient_offline errors are logged
   // but no wake fallback fires.
@@ -760,9 +763,16 @@ class MessageService {
       return;
     }
 
+    if (inner is GroupInviteEnvelope) {
+      await _handleGroupInvite(frame, inner);
+      return;
+    }
+
     if (inner is! TextEnvelope) {
-      _log('non_text_inner_in_direct_path type=${inner.runtimeType}');
-      return; // Groups land in T6. For T4, direct path only handles text.
+      // MemberAdd/Remove/Leave land in T6.3/T6.4/T6.5; for now log + drop so
+      // we don't accidentally pollute the direct-chat row.
+      _log('unhandled_inner_type type=${inner.runtimeType}');
+      return;
     }
 
     // Direct-chat spoof guard: inner.chatId must equal the libsignal-session sender.
@@ -788,6 +798,141 @@ class MessageService {
       kind: const Value('text'),
     ));
     await dao.updateLastMessage(frame.fromPubkeyHex, _preview(body), now);
+  }
+
+  /// T6.1 — handle inbound `group_invite` envelope on the foreground path.
+  /// Spec §6.7 + §7.2 + §7.8 verification:
+  ///   1. sig verifies under `inv.creator`
+  ///   2. `inv.creator` is in local contacts (trust gate)
+  ///   3. `inv.members.length <= 8`
+  ///   4. self is in `inv.members`
+  ///   5. idempotent: skip if `chats` already has this row
+  /// Sig-verify failures log + drop AND append `group_ops_log applied=false`.
+  /// All other verification failures log + drop (no ops_log row).
+  /// Duplicate invites log + drop AND append `applied=true` so the log records
+  /// that a second valid invite was seen.
+  Future<void> _handleGroupInvite(
+    DeliverFrame frame,
+    GroupInviteEnvelope inv,
+  ) async {
+    // 1. Sig verify — rebuild canonical body from the typed fields so the
+    // bytes we hash match what the sender canonicalized in createGroup /
+    // addMemberToGroup.
+    final canonicalBody = <String, dynamic>{
+      'v': 1, 'type': 'group_invite',
+      'chatId': inv.chatId, 'lamport': inv.lamport,
+      'groupName': inv.groupName,
+      'creator': inv.creator,
+      'members': inv.members,
+      'createdAt': inv.createdAt.toUtc().toIso8601String(),
+      'opSeq': inv.opSeq,
+      'joinedVia': inv.joinedVia,
+    };
+    final canonical = canonicalJsonBytes(canonicalBody);
+    final sigOk = await SigningService.verify(
+      publicKeyHex: inv.creator,
+      message: canonical,
+      signature: hexToBytes(inv.sigHex),
+    );
+    if (!sigOk) {
+      _log('[Group] invite_sig_fail chat=${_short(inv.chatId)} '
+          'creator=${_short(inv.creator)}');
+      await groupOpsLogDao.append(
+        id: _uuid.v4(),
+        chatId: inv.chatId,
+        opSeq: inv.opSeq,
+        kind: 'create',
+        targetPubkeyHex: null,
+        signerPubkeyHex: inv.creator,
+        signatureHex: inv.sigHex,
+        applied: false,
+      );
+      return;
+    }
+
+    // 2. Contacts trust gate — the creator must be someone we've scanned.
+    final allContacts = await contactsRepository.loadAll();
+    final creatorInContacts =
+        allContacts.any((c) => c.pubkeyHex == inv.creator);
+    if (!creatorInContacts) {
+      _log('[Group] creator_not_in_contacts chat=${_short(inv.chatId)} '
+          'creator=${_short(inv.creator)}');
+      return;
+    }
+
+    // 3. Group-size cap.
+    if (inv.members.length > 8) {
+      _log('[Group] invite_too_many_members chat=${_short(inv.chatId)} '
+          'count=${inv.members.length}');
+      return;
+    }
+
+    // 4. Self must be in the members list (defense in depth — libsignal
+    // already addressed us, but in case a sender lies in the JSON).
+    if (!inv.members.contains(myPubkeyHex)) {
+      _log('[Group] self_not_in_invite chat=${_short(inv.chatId)}');
+      return;
+    }
+
+    // 5. Idempotency — a duplicate of a previously accepted invite logs an
+    // applied=true ops_log entry but does NOT re-insert chat/member rows.
+    final existing = await dao.getChat(inv.chatId);
+    if (existing != null) {
+      _log('[Group] duplicate_invite chat=${_short(inv.chatId)}');
+      await groupOpsLogDao.append(
+        id: _uuid.v4(),
+        chatId: inv.chatId,
+        opSeq: inv.opSeq,
+        kind: 'create',
+        targetPubkeyHex: null,
+        signerPubkeyHex: inv.creator,
+        signatureHex: inv.sigHex,
+        applied: true,
+      );
+      return;
+    }
+
+    // 6. Persist chat + member rows + system message + ops log.
+    await dao.insertGroupChat(
+      chatId: inv.chatId,
+      groupName: inv.groupName,
+      creatorPubkeyHex: inv.creator,
+      createdAt: inv.createdAt,
+      initialOpSeq: inv.opSeq,
+    );
+    for (final m in inv.members) {
+      await groupMembersDao.insertMember(
+        chatId: inv.chatId,
+        memberPubkeyHex: m,
+        addedByPubkeyHex: inv.creator,
+        addedAt: inv.createdAt,
+      );
+    }
+    final body = '${_short(inv.creator)} created the group';
+    final now = DateTime.now();
+    await dao.insertMessage(MessagesCompanion.insert(
+      id: _uuid.v4(),
+      chatId: inv.chatId,
+      senderPubkeyHex: inv.creator,
+      body: body,
+      lamport: 0,
+      sentAt: inv.createdAt,
+      receivedAt: Value(now),
+      kind: const Value('group_created'),
+    ));
+    await dao.updateLastMessage(inv.chatId, body, now);
+    await groupOpsLogDao.append(
+      id: _uuid.v4(),
+      chatId: inv.chatId,
+      opSeq: inv.opSeq,
+      kind: 'create',
+      targetPubkeyHex: null,
+      signerPubkeyHex: inv.creator,
+      signatureHex: inv.sigHex,
+      applied: true,
+    );
+    _log('group_invite accepted chat=${_short(inv.chatId)} '
+        'creator=${_short(inv.creator)} members=${inv.members.length}');
   }
 
   String _preview(String body) =>

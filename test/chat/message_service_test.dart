@@ -8,8 +8,10 @@ import 'package:app_v3/chat/pre_key_bootstrap.dart';
 import 'package:app_v3/core/hex_codec.dart';
 import 'package:app_v3/data/app_database.dart';
 import 'package:app_v3/data/chats_dao.dart';
+import 'package:app_v3/data/contacts_repository.dart';
 import 'package:app_v3/data/group_members_dao.dart';
 import 'package:app_v3/data/group_ops_log_dao.dart';
+import 'package:app_v3/data/models/contact.dart' as contact_model;
 import 'package:app_v3/data/peer_bundle_state_dao.dart';
 import 'package:app_v3/relay/relay_client.dart';
 import 'package:app_v3/relay/relay_frames.dart';
@@ -222,6 +224,7 @@ void main() {
   late GroupMembersDao groupMembersDao;
   late GroupOpsLogDao groupOpsLogDao;
   late SigningService signing;
+  late ContactsRepository contactsRepo;
   late _FakeCrypto crypto;
   late _FakeRelay relay;
   late MessageService service;
@@ -253,6 +256,7 @@ void main() {
     groupMembersDao = GroupMembersDao(db);
     groupOpsLogDao = GroupOpsLogDao(db);
     signing = await makeSigningService();
+    contactsRepo = ContactsRepository(db);
     crypto = _FakeCrypto();
     relay = _FakeRelay();
     service = MessageService(
@@ -264,6 +268,7 @@ void main() {
       groupMembersDao: groupMembersDao,
       groupOpsLogDao: groupOpsLogDao,
       signing: signing,
+      contactsRepository: contactsRepo,
     );
   });
 
@@ -452,6 +457,7 @@ void main() {
         groupMembersDao: groupMembersDao,
         groupOpsLogDao: groupOpsLogDao,
         signing: signing,
+        contactsRepository: contactsRepo,
       );
       // After this point any inbound from `relay` flows through wakeService.
     }
@@ -897,6 +903,7 @@ void main() {
         groupMembersDao: groupMembersDao,
         groupOpsLogDao: groupOpsLogDao,
         signing: signing,
+        contactsRepository: contactsRepo,
       );
 
       final gid = await setUpGroup();
@@ -1537,6 +1544,265 @@ void main() {
     });
   });
 
+  group('handle inbound group_invite (T6.1)', () {
+    // Build a signed group_invite envelope authored by [creatorSigning],
+    // wrapped via EnvelopeWire.wrapMessage so it can be emitted as a
+    // DeliverFrame. The FakeCrypto's decrypt strips the 0xCC prefix
+    // (set fakeCryptoPrefix=true) so the receiver sees the raw inner bytes.
+    Future<List<int>> buildSignedInviteEnvelope({
+      required SigningService creatorSigning,
+      required String creatorPub,
+      required String chatId,
+      required String groupName,
+      required List<String> members,
+      required DateTime createdAt,
+      int opSeq = 1,
+      String joinedVia = 'create',
+      bool tamperSig = false,
+    }) async {
+      final canonicalBody = <String, dynamic>{
+        'v': 1, 'type': 'group_invite',
+        'chatId': chatId, 'lamport': 0,
+        'groupName': groupName,
+        'creator': creatorPub,
+        'members': members,
+        'createdAt': createdAt.toUtc().toIso8601String(),
+        'opSeq': opSeq,
+        'joinedVia': joinedVia,
+      };
+      final canonical = canonicalJsonBytes(canonicalBody);
+      final sigBytes = await creatorSigning.sign(canonical);
+      var sigHex = bytesToHex(sigBytes);
+      if (tamperSig) {
+        // Flip one byte in the signature so verify rejects it.
+        final mutable = List<int>.from(sigBytes);
+        mutable[0] = mutable[0] ^ 0xFF;
+        sigHex = bytesToHex(mutable);
+      }
+      final inviteBytes = InnerEnvelope.buildGroupInvite(
+        chatId: chatId,
+        groupName: groupName,
+        creator: creatorPub,
+        members: members,
+        createdAt: createdAt,
+        opSeq: opSeq,
+        joinedVia: joinedVia,
+        sigHex: sigHex,
+      );
+      // FakeCrypto decrypts by stripping a leading 0xCC; prepend it so the
+      // receiver's crypto.decrypt yields the JSON bytes back.
+      final ciphertext = [0xCC, ...inviteBytes];
+      return EnvelopeWire.wrapMessage(ciphertext);
+    }
+
+    test('valid invite from a contact-creator persists chat + members + '
+        'system row + ops log row', () async {
+      // A is the inviter; we (myPub) are the receiver.
+      final creatorSigning = await makeSigningService();
+      final creatorPub = await creatorSigning.publicKeyHex();
+      await contactsRepo.add(contact_model.Contact(
+        pubkeyHex: creatorPub,
+        addedAt: DateTime.now(),
+      ));
+
+      final chatId = 'ab' * 16;
+      final members = [creatorPub, myPub, 'cc' * 32];
+      final createdAt = DateTime.utc(2026, 5, 21, 12, 0, 0);
+      final envelope = await buildSignedInviteEnvelope(
+        creatorSigning: creatorSigning,
+        creatorPub: creatorPub,
+        chatId: chatId,
+        groupName: 'Welcome Group',
+        members: members,
+        createdAt: createdAt,
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: creatorPub, envelope: envelope));
+      await drainMicrotasks();
+
+      // chats row.
+      final chat = await dao.getChat(chatId);
+      expect(chat, isNotNull);
+      expect(chat!.kind, 'group');
+      expect(chat.groupName, 'Welcome Group');
+      expect(chat.creatorPubkeyHex, creatorPub);
+      expect(chat.lastOpSeq, 1);
+
+      // group_members rows for every member in the invite.
+      final activeMembers = await groupMembersDao.activeMembers(chatId);
+      final memberKeys = activeMembers.map((m) => m.memberPubkeyHex).toSet();
+      expect(memberKeys, members.toSet());
+
+      // system 'group_created' message with sender = creator.
+      final msgs = await dao.watchMessages(chatId).first;
+      final sysMsg = msgs.firstWhere((m) => m.kind == 'group_created');
+      expect(sysMsg.senderPubkeyHex, creatorPub);
+      expect(sysMsg.body, contains(_shortPub(creatorPub)));
+
+      // ops_log entry applied=true.
+      final ops = await groupOpsLogDao.forChat(chatId);
+      expect(ops, hasLength(1));
+      expect(ops.first.applied, isTrue);
+      expect(ops.first.kind, 'create');
+      expect(ops.first.signerPubkeyHex, creatorPub);
+    });
+
+    test('tampered sig → dropped; chat NOT persisted; ops_log applied=false',
+        () async {
+      final creatorSigning = await makeSigningService();
+      final creatorPub = await creatorSigning.publicKeyHex();
+      await contactsRepo.add(contact_model.Contact(
+        pubkeyHex: creatorPub,
+        addedAt: DateTime.now(),
+      ));
+
+      final chatId = 'ab' * 16;
+      final envelope = await buildSignedInviteEnvelope(
+        creatorSigning: creatorSigning,
+        creatorPub: creatorPub,
+        chatId: chatId,
+        groupName: 'Bad Sig',
+        members: [creatorPub, myPub],
+        createdAt: DateTime.utc(2026, 5, 21),
+        tamperSig: true,
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: creatorPub, envelope: envelope));
+      await drainMicrotasks();
+
+      expect(await dao.getChat(chatId), isNull,
+          reason: 'sig-fail invites must not persist a chat row');
+      final activeMembers = await groupMembersDao.activeMembers(chatId);
+      expect(activeMembers, isEmpty,
+          reason: 'sig-fail invites must not insert group_members');
+      final ops = await groupOpsLogDao.forChat(chatId);
+      expect(ops, hasLength(1));
+      expect(ops.first.applied, isFalse,
+          reason: 'sig-fail must record an applied=false ops_log entry');
+    });
+
+    test('creator not in contacts → dropped; no ops_log row', () async {
+      final creatorSigning = await makeSigningService();
+      final creatorPub = await creatorSigning.publicKeyHex();
+      // Do NOT seed contactsRepo.
+
+      final chatId = 'ab' * 16;
+      final envelope = await buildSignedInviteEnvelope(
+        creatorSigning: creatorSigning,
+        creatorPub: creatorPub,
+        chatId: chatId,
+        groupName: 'Stranger',
+        members: [creatorPub, myPub],
+        createdAt: DateTime.utc(2026, 5, 21),
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: creatorPub, envelope: envelope));
+      await drainMicrotasks();
+
+      expect(await dao.getChat(chatId), isNull);
+      final ops = await groupOpsLogDao.forChat(chatId);
+      expect(ops, isEmpty,
+          reason: 'non-sig verification failures must not log to ops_log');
+    });
+
+    test('members.length > 8 → dropped; no ops_log row', () async {
+      final creatorSigning = await makeSigningService();
+      final creatorPub = await creatorSigning.publicKeyHex();
+      await contactsRepo.add(contact_model.Contact(
+        pubkeyHex: creatorPub,
+        addedAt: DateTime.now(),
+      ));
+
+      // Build 9 members including creator + self.
+      final extras = List.generate(
+          7, (i) => (i + 1).toRadixString(16).padLeft(2, '0') * 32);
+      final members = [creatorPub, myPub, ...extras];
+      expect(members.length, 9);
+
+      final chatId = 'ab' * 16;
+      final envelope = await buildSignedInviteEnvelope(
+        creatorSigning: creatorSigning,
+        creatorPub: creatorPub,
+        chatId: chatId,
+        groupName: 'Too Big',
+        members: members,
+        createdAt: DateTime.utc(2026, 5, 21),
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: creatorPub, envelope: envelope));
+      await drainMicrotasks();
+
+      expect(await dao.getChat(chatId), isNull);
+      final ops = await groupOpsLogDao.forChat(chatId);
+      expect(ops, isEmpty);
+    });
+
+    test('self not in members → dropped; no ops_log row', () async {
+      final creatorSigning = await makeSigningService();
+      final creatorPub = await creatorSigning.publicKeyHex();
+      await contactsRepo.add(contact_model.Contact(
+        pubkeyHex: creatorPub,
+        addedAt: DateTime.now(),
+      ));
+
+      final chatId = 'ab' * 16;
+      // myPub is NOT in members.
+      final envelope = await buildSignedInviteEnvelope(
+        creatorSigning: creatorSigning,
+        creatorPub: creatorPub,
+        chatId: chatId,
+        groupName: 'Not Me',
+        members: [creatorPub, 'cc' * 32, 'dd' * 32],
+        createdAt: DateTime.utc(2026, 5, 21),
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: creatorPub, envelope: envelope));
+      await drainMicrotasks();
+
+      expect(await dao.getChat(chatId), isNull);
+      final ops = await groupOpsLogDao.forChat(chatId);
+      expect(ops, isEmpty);
+    });
+
+    test('duplicate invite → no second chat row; ops_log gets second '
+        'applied=true entry', () async {
+      final creatorSigning = await makeSigningService();
+      final creatorPub = await creatorSigning.publicKeyHex();
+      await contactsRepo.add(contact_model.Contact(
+        pubkeyHex: creatorPub,
+        addedAt: DateTime.now(),
+      ));
+
+      final chatId = 'ab' * 16;
+      final members = [creatorPub, myPub];
+      final createdAt = DateTime.utc(2026, 5, 21);
+
+      Future<void> emitOnce() async {
+        final envelope = await buildSignedInviteEnvelope(
+          creatorSigning: creatorSigning,
+          creatorPub: creatorPub,
+          chatId: chatId,
+          groupName: 'Dup',
+          members: members,
+          createdAt: createdAt,
+        );
+        relay.emit(DeliverFrame(fromPubkeyHex: creatorPub, envelope: envelope));
+        await drainMicrotasks();
+      }
+
+      await emitOnce();
+      await emitOnce();
+
+      // Still exactly one chat row.
+      final chat = await dao.getChat(chatId);
+      expect(chat, isNotNull);
+      // Members not duplicated either.
+      final activeMembers = await groupMembersDao.activeMembers(chatId);
+      expect(activeMembers.map((m) => m.memberPubkeyHex).toSet(),
+          members.toSet());
+      // ops_log records the second invite.
+      final ops = await groupOpsLogDao.forChat(chatId);
+      expect(ops, hasLength(2),
+          reason: 'second invite should append a second ops_log entry');
+      expect(ops.every((o) => o.applied), isTrue);
+    });
+  });
+
   group('bundle-exchange state persists across restart (T3.4)', () {
     late Directory tempDir;
     late File dbFile;
@@ -1569,6 +1835,7 @@ void main() {
         groupMembersDao: GroupMembersDao(db1),
         groupOpsLogDao: GroupOpsLogDao(db1),
         signing: signing,
+        contactsRepository: ContactsRepository(db1),
       );
 
       await service1.openChat(peerPub);
@@ -1602,6 +1869,7 @@ void main() {
         groupMembersDao: GroupMembersDao(db2),
         groupOpsLogDao: GroupOpsLogDao(db2),
         signing: signing,
+        contactsRepository: ContactsRepository(db2),
       );
 
       // openChat in session 2 must NOT emit a bundle because bundleSentAt
