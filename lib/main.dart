@@ -14,7 +14,7 @@ import 'theme/app_theme.dart';
 /// chat thread from a `BuildContext`-less callback (NotificationsService).
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
-void _openChatThread(String peerPubkeyHex) {
+void _openChatThread(String chatId) {
   final state = rootNavigatorKey.currentState;
   if (state == null) {
     // Navigator isn't mounted yet — possible during cold-launch before
@@ -24,7 +24,7 @@ void _openChatThread(String peerPubkeyHex) {
   }
   state.push(
     MaterialPageRoute(
-      builder: (_) => ChatThreadScreen(chatId: peerPubkeyHex),
+      builder: (_) => ChatThreadScreen(chatId: chatId),
     ),
   );
 }
@@ -66,23 +66,25 @@ Future<void> main() async {
   // Cold-launch from a tapped notification: the app process was killed,
   // user tapped, OS started us. The payload is available via FLN; we
   // schedule the chat-thread push after the first frame builds.
-  String? coldLaunchPeer;
+  String? coldLaunchChatId;
   try {
-    coldLaunchPeer = await NotificationsService.instance.getLaunchPayload();
+    coldLaunchChatId = await NotificationsService.instance.getLaunchPayload();
   } catch (e) {
     // ignore: avoid_print
     print('[main] getLaunchPayload error: $e');
   }
 
-  runApp(ProviderScope(child: HeartbeatV3App(coldLaunchPeer: coldLaunchPeer)));
+  runApp(ProviderScope(
+      child: HeartbeatV3App(coldLaunchChatId: coldLaunchChatId)));
 }
 
 class HeartbeatV3App extends StatefulWidget {
-  const HeartbeatV3App({super.key, this.coldLaunchPeer});
+  const HeartbeatV3App({super.key, this.coldLaunchChatId});
 
-  /// Peer pubkey hex carried over by a notification that woke the process
-  /// from a fully-killed state. Null on a regular launch.
-  final String? coldLaunchPeer;
+  /// Chat id (direct = peer pubkey hex, group = group hex id) carried over
+  /// by a notification that woke the process from a fully-killed state.
+  /// Null on a regular launch.
+  final String? coldLaunchChatId;
 
   @override
   State<HeartbeatV3App> createState() => _HeartbeatV3AppState();
@@ -92,11 +94,11 @@ class _HeartbeatV3AppState extends State<HeartbeatV3App> {
   @override
   void initState() {
     super.initState();
-    final peer = widget.coldLaunchPeer;
-    if (peer != null) {
+    final chatId = widget.coldLaunchChatId;
+    if (chatId != null) {
       // Wait for the first frame so MaterialApp + Navigator have built.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _openChatThread(peer);
+        _openChatThread(chatId);
       });
     }
   }
