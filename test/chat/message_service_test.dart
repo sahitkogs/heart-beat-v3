@@ -1,16 +1,21 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:app_v3/chat/group_envelope.dart';
 import 'package:app_v3/chat/message_service.dart';
 import 'package:app_v3/chat/pre_key_bootstrap.dart';
+import 'package:app_v3/core/hex_codec.dart';
 import 'package:app_v3/data/app_database.dart';
 import 'package:app_v3/data/chats_dao.dart';
+import 'package:app_v3/data/group_members_dao.dart';
+import 'package:app_v3/data/group_ops_log_dao.dart';
 import 'package:app_v3/data/peer_bundle_state_dao.dart';
 import 'package:app_v3/relay/relay_client.dart';
 import 'package:app_v3/relay/relay_frames.dart';
 import 'package:app_v3/services/crypto_pre_key_bundle.dart';
 import 'package:app_v3/services/crypto_service.dart';
+import 'package:app_v3/services/identity_service.dart';
 import 'package:app_v3/services/key_storage.dart';
 import 'package:app_v3/services/signing_service.dart';
 import 'package:app_v3/services/wake_client.dart';
@@ -94,6 +99,26 @@ class _WakeCall {
   final List<int> envelope;
 }
 
+class _MemStorage implements SecureKeyValueStorage {
+  final Map<String, String> _store = {};
+  @override
+  Future<String?> read(String key) async => _store[key];
+  @override
+  Future<void> write(String key, String value) async => _store[key] = value;
+  @override
+  Future<void> delete(String key) async => _store.remove(key);
+}
+
+/// Creates a [SigningService] with a freshly generated identity key so tests
+/// can call [signing.sign] and [SigningService.verify] without touching device
+/// Keystore.
+Future<SigningService> makeSigningService() async {
+  final ks = KeyStorage(_MemStorage());
+  final id = IdentityService(ks);
+  await id.loadOrCreate(); // generates + stores a random Ed25519 seed
+  return SigningService(ks);
+}
+
 class _FakeCrypto implements CryptoService {
   int encryptCalls = 0;
   int decryptCalls = 0;
@@ -153,6 +178,9 @@ void main() {
   late AppDatabase db;
   late ChatsDao dao;
   late PeerBundleStateDao peerBundleDao;
+  late GroupMembersDao groupMembersDao;
+  late GroupOpsLogDao groupOpsLogDao;
+  late SigningService signing;
   late _FakeCrypto crypto;
   late _FakeRelay relay;
   late MessageService service;
@@ -177,10 +205,13 @@ void main() {
     await Future<void>.delayed(Duration.zero);
   }
 
-  setUp(() {
+  setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     dao = ChatsDao(db);
     peerBundleDao = PeerBundleStateDao(db);
+    groupMembersDao = GroupMembersDao(db);
+    groupOpsLogDao = GroupOpsLogDao(db);
+    signing = await makeSigningService();
     crypto = _FakeCrypto();
     relay = _FakeRelay();
     service = MessageService(
@@ -189,6 +220,9 @@ void main() {
       dao: dao,
       peerBundleDao: peerBundleDao,
       myPubkeyHex: myPub,
+      groupMembersDao: groupMembersDao,
+      groupOpsLogDao: groupOpsLogDao,
+      signing: signing,
     );
   });
 
@@ -374,6 +408,9 @@ void main() {
         peerBundleDao: peerBundleDao,
         myPubkeyHex: myPub,
         wake: wake,
+        groupMembersDao: groupMembersDao,
+        groupOpsLogDao: groupOpsLogDao,
+        signing: signing,
       );
       // After this point any inbound from `relay` flows through wakeService.
     }
@@ -605,6 +642,156 @@ void main() {
     });
   });
 
+  group('createGroup (T5.1)', () {
+    final peerB = 'bb' * 32;
+    final peerC = 'cc' * 32;
+
+    test('fans out 2 invites with the correct toPubkeyHex when bundles present',
+        () async {
+      await peerBundleDao.markPeerBundleReceived(peerB);
+      await peerBundleDao.markPeerBundleReceived(peerC);
+
+      await service.createGroup(
+        name: 'Family',
+        memberPubkeysHex: [peerB, peerC],
+      );
+
+      // fan-out should have sent exactly 2 message envelopes (one per peer).
+      // _maybeSendOwnBundle also fires, so filter to message-tagged frames.
+      final msgFrames = relay.sent
+          .where((f) => f.envelope.first == EnvelopeTag.message)
+          .toList();
+      expect(msgFrames.length, 2);
+      final destinations = msgFrames.map((f) => f.to).toSet();
+      expect(destinations, {peerB, peerC});
+    });
+
+    test('persists chat + member rows + group_created system message',
+        () async {
+      await peerBundleDao.markPeerBundleReceived(peerB);
+      await peerBundleDao.markPeerBundleReceived(peerC);
+
+      final chatId = await service.createGroup(
+        name: 'Family',
+        memberPubkeysHex: [peerB, peerC],
+      );
+
+      // Chat row.
+      final chat = await dao.getChat(chatId);
+      expect(chat, isNotNull);
+      expect(chat!.kind, 'group');
+      expect(chat.groupName, 'Family');
+      expect(chat.creatorPubkeyHex, myPub);
+      expect(chat.lastOpSeq, 1);
+
+      // Member rows: creator + 2 invitees.
+      final members = await groupMembersDao.activeMembers(chatId);
+      final memberKeys = members.map((m) => m.memberPubkeyHex).toSet();
+      expect(memberKeys, {myPub, peerB, peerC});
+
+      // System message.
+      final msgs = await dao.watchMessages(chatId).first;
+      final sysMsg = msgs.firstWhere((m) => m.kind == 'group_created');
+      expect(sysMsg.body, 'You created the group');
+      expect(sysMsg.senderPubkeyHex, myPub);
+      expect(sysMsg.lamport, 0);
+    });
+
+    test('rejects memberPubkeysHex.length > 7', () async {
+      expect(
+        () => service.createGroup(
+          name: 'x',
+          memberPubkeysHex: List.generate(8, (i) => 'peer$i'),
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('queues invite when peer bundle not yet received, drains on arrival',
+        () async {
+      // peerB has no bundle yet; peerC does.
+      await peerBundleDao.markPeerBundleReceived(peerC);
+
+      await service.createGroup(
+        name: 'Queued',
+        memberPubkeysHex: [peerB, peerC],
+      );
+
+      // Only peerC should have received a message frame immediately.
+      final msgsBefore = relay.sent
+          .where((f) => f.envelope.first == EnvelopeTag.message)
+          .map((f) => f.to)
+          .toList();
+      expect(msgsBefore.contains(peerC), isTrue);
+      expect(msgsBefore.contains(peerB), isFalse,
+          reason: 'peerB invite must be queued (no bundle yet)');
+
+      // Simulate peerB's bundle arriving.
+      relay.emit(DeliverFrame(
+        fromPubkeyHex: peerB,
+        envelope: EnvelopeWire.wrapPreKeyBundle(
+          const CryptoPreKeyBundle(
+            ownerPubkeyHex: '',
+            registrationId: 77,
+            deviceId: 1,
+            preKeyId: 3,
+            preKeyPublicHex: '01',
+            signedPreKeyId: 4,
+            signedPreKeyPublicHex: '02',
+            signedPreKeySignatureHex: '03',
+            identityKeyPublicHex: '04',
+          ).copyWithOwner(peerB),
+        ),
+      ));
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      // After drain, peerB should now have a message frame.
+      final msgsAfter = relay.sent
+          .where((f) =>
+              f.envelope.first == EnvelopeTag.message && f.to == peerB)
+          .toList();
+      expect(msgsAfter, isNotEmpty,
+          reason: 'queued invite must drain when peerB bundle arrives');
+    });
+
+    test('group_invite sig field round-trips through SigningService.verify',
+        () async {
+      await peerBundleDao.markPeerBundleReceived(peerB);
+
+      await service.createGroup(
+        name: 'SigCheck',
+        memberPubkeysHex: [peerB],
+      );
+
+      // Find the message frame sent to peerB.
+      final msgFrame = relay.sent
+          .lastWhere((f) =>
+              f.envelope.first == EnvelopeTag.message && f.to == peerB);
+
+      final parsedEnv = EnvelopeWire.parse(msgFrame.envelope);
+      // FakeCrypto prepends 0xCC; strip it.
+      final innerBytes = parsedEnv.ciphertext!.sublist(1);
+      final inner = InnerEnvelope.parse(innerBytes);
+      expect(inner, isA<GroupInviteEnvelope>());
+      final invite = inner as GroupInviteEnvelope;
+
+      // Rebuild the canonical bytes the same way createGroup did (omit 'sig').
+      final rawJson = jsonDecode(utf8.decode(innerBytes)) as Map<String, dynamic>;
+      final canonical = canonicalJsonBytes(rawJson, omit: 'sig');
+
+      // Verify the signature using the creator's public key.
+      final signerPubHex = await signing.publicKeyHex();
+      final ok = await SigningService.verify(
+        publicKeyHex: signerPubHex,
+        message: canonical,
+        signature: hexToBytes(invite.sigHex),
+      );
+      expect(ok, isTrue,
+          reason: 'group_invite sig must verify against creator public key');
+    });
+  });
+
   group('bundle-exchange state persists across restart (T3.4)', () {
     late Directory tempDir;
     late File dbFile;
@@ -634,6 +821,9 @@ void main() {
         dao: dao1,
         peerBundleDao: peerBundleDao1,
         myPubkeyHex: myPub,
+        groupMembersDao: GroupMembersDao(db1),
+        groupOpsLogDao: GroupOpsLogDao(db1),
+        signing: signing,
       );
 
       await service1.openChat(peerPub);
@@ -664,6 +854,9 @@ void main() {
         dao: dao2,
         peerBundleDao: peerBundleDao2,
         myPubkeyHex: myPub,
+        groupMembersDao: GroupMembersDao(db2),
+        groupOpsLogDao: GroupOpsLogDao(db2),
+        signing: signing,
       );
 
       // openChat in session 2 must NOT emit a bundle because bundleSentAt

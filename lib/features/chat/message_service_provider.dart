@@ -47,6 +47,9 @@ final messageServiceProvider = FutureProvider<MessageService>((ref) async {
   final peerBundleDao = ref.watch(peerBundleStateDaoProvider);
   final identity = await ref.watch(identityProvider.future);
   final wake = ref.watch(wakeClientProvider);
+  final groupMembersDao = ref.watch(groupMembersDaoProvider);
+  final groupOpsLogDao = ref.watch(groupOpsLogDaoProvider);
+  final signing = ref.watch(signingServiceProvider);
   final svc = MessageService(
     crypto: crypto,
     relay: relay,
@@ -54,6 +57,9 @@ final messageServiceProvider = FutureProvider<MessageService>((ref) async {
     peerBundleDao: peerBundleDao,
     myPubkeyHex: identity.publicKeyHex,
     wake: wake,
+    groupMembersDao: groupMembersDao,
+    groupOpsLogDao: groupOpsLogDao,
+    signing: signing,
   );
   ref.onDispose(() => svc.dispose());
   return svc;

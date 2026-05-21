@@ -1,14 +1,19 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
+import '../core/hex_codec.dart';
 import '../data/app_database.dart';
 import '../data/chats_dao.dart';
+import '../data/group_members_dao.dart';
+import '../data/group_ops_log_dao.dart';
 import '../data/peer_bundle_state_dao.dart';
 import '../relay/relay_client.dart';
 import '../relay/relay_frames.dart';
 import '../services/crypto_service.dart';
+import '../services/signing_service.dart';
 import '../services/wake_client.dart';
 import 'group_envelope.dart';
 import 'pre_key_bootstrap.dart';
@@ -22,6 +27,9 @@ class MessageService {
     required this.dao,
     required this.peerBundleDao,
     required this.myPubkeyHex,
+    required this.groupMembersDao,
+    required this.groupOpsLogDao,
+    required this.signing,
     this.wake,
   }) {
     _sub = relay.inbound.listen(_onInbound);
@@ -32,6 +40,9 @@ class MessageService {
   final ChatsDao dao;
   final PeerBundleStateDao peerBundleDao;
   final String myPubkeyHex;
+  final GroupMembersDao groupMembersDao;
+  final GroupOpsLogDao groupOpsLogDao;
+  final SigningService signing;
   // Optional in tests; production wiring always supplies one via the
   // messageServiceProvider. When null, recipient_offline errors are logged
   // but no wake fallback fires.
@@ -101,6 +112,112 @@ class MessageService {
       _log('ENCRYPT FAIL peer=${_short(peerPubkeyHex)} err=$e\n$st');
       rethrow;
     }
+  }
+
+  /// Creates a group, fans out a signed `group_invite` to every selected member,
+  /// and returns the new chatId. Throws ArgumentError if memberPubkeysHex.length > 7
+  /// (8-member cap including the creator).
+  Future<String> createGroup({
+    required String name,
+    required List<String> memberPubkeysHex, // does NOT include self
+  }) async {
+    if (memberPubkeysHex.length > 7) {
+      throw ArgumentError('group too big (max 8 including creator)');
+    }
+    if (name.trim().isEmpty) {
+      throw ArgumentError('group name must be non-empty');
+    }
+    final chatId = _randomChatId();
+    final now = DateTime.now();
+    const initialOpSeq = 1;
+
+    // Local state — chat row, member rows, system message.
+    await dao.insertGroupChat(
+      chatId: chatId,
+      groupName: name,
+      creatorPubkeyHex: myPubkeyHex,
+      createdAt: now,
+      initialOpSeq: initialOpSeq,
+    );
+    await groupMembersDao.insertMember(
+      chatId: chatId, memberPubkeyHex: myPubkeyHex,
+      addedByPubkeyHex: myPubkeyHex, addedAt: now,
+    );
+    for (final m in memberPubkeysHex) {
+      await groupMembersDao.insertMember(
+        chatId: chatId, memberPubkeyHex: m,
+        addedByPubkeyHex: myPubkeyHex, addedAt: now,
+      );
+    }
+    await dao.insertMessage(MessagesCompanion.insert(
+      id: _uuid.v4(),
+      chatId: chatId,
+      senderPubkeyHex: myPubkeyHex,
+      body: 'You created the group',
+      lamport: 0,
+      sentAt: now,
+      kind: const Value('group_created'),
+    ));
+    await dao.updateLastMessage(chatId, 'You created the group', now);
+
+    // Build the signed invite. Sort members so canonical bytes are stable.
+    final members = [myPubkeyHex, ...memberPubkeysHex];
+    final inviteBody = <String, dynamic>{
+      'v': 1, 'type': 'group_invite',
+      'chatId': chatId, 'lamport': 0,
+      'groupName': name,
+      'creator': myPubkeyHex,
+      'members': members,
+      'createdAt': now.toUtc().toIso8601String(),
+      'opSeq': initialOpSeq,
+      'joinedVia': 'create',
+    };
+    final canonical = canonicalJsonBytes(inviteBody);
+    final sigBytes = await signing.sign(canonical);
+    final sigHex = bytesToHex(sigBytes);
+    final inviteBytes = InnerEnvelope.buildGroupInvite(
+      chatId: chatId, groupName: name, creator: myPubkeyHex,
+      members: members, createdAt: now,
+      opSeq: initialOpSeq, joinedVia: 'create', sigHex: sigHex,
+    );
+
+    await groupOpsLogDao.append(
+      id: _uuid.v4(), chatId: chatId, opSeq: initialOpSeq,
+      kind: 'create', targetPubkeyHex: null,
+      signerPubkeyHex: myPubkeyHex, signatureHex: sigHex,
+      applied: true,
+    );
+
+    for (final peer in memberPubkeysHex) {
+      try {
+        await _maybeSendOwnBundle(peer);
+        await _sendOrQueueGroupBytes(peer, inviteBytes);
+      } catch (e, st) {
+        _log('createGroup fan-out FAIL peer=${_short(peer)} err=$e\n$st');
+      }
+    }
+    _log('createGroup chatId=$chatId members=${memberPubkeysHex.length}+1');
+    return chatId;
+  }
+
+  String _randomChatId() {
+    final rand = Random.secure();
+    final bytes = List<int>.generate(16, (_) => rand.nextInt(256));
+    return bytesToHex(bytes);
+  }
+
+  /// Fan-out helper used by all group send paths. If the peer's bundle hasn't
+  /// been received yet, queue the encrypted envelope bytes for later drain.
+  /// Otherwise encrypt and send directly.
+  Future<void> _sendOrQueueGroupBytes(String peer, List<int> bytes) async {
+    final state = await peerBundleDao.get(peer);
+    if (state?.peerBundleReceivedAt == null) {
+      (_pendingByPeer[peer] ??= <List<int>>[]).add(bytes);
+      _log('queued group bytes (no peer bundle yet) peer=${_short(peer)} '
+          'queueDepth=${_pendingByPeer[peer]!.length}');
+      return;
+    }
+    await _encryptAndSend(peer, bytes);
   }
 
   Future<void> _maybeSendOwnBundle(String peerPubkeyHex) async {
