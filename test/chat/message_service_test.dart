@@ -1361,6 +1361,182 @@ void main() {
     });
   });
 
+  group('leaveGroup (T5.5)', () {
+    final peerB = 'bb' * 32;
+    final peerC = 'cc' * 32;
+
+    /// Creates a {self=myPub, B, C} group with bundles pre-marked for B and C.
+    Future<String> setUpGroup() async {
+      await peerBundleDao.markPeerBundleReceived(peerB);
+      await peerBundleDao.markPeerBundleReceived(peerC);
+      return service.createGroup(
+        name: 'TestGroup',
+        memberPubkeysHex: [peerB, peerC],
+      );
+    }
+
+    test('3-member group; self leaves → fan-out to B and C only', () async {
+      final gid = await setUpGroup();
+      final before = DateTime.now();
+
+      final sentBefore = relay.sent.length;
+      await service.leaveGroup(chatId: gid);
+
+      // Collect only the NEW message frames produced by leaveGroup.
+      final newMsgFrames = relay.sent
+          .skip(sentBefore)
+          .where((f) => f.envelope.first == EnvelopeTag.message)
+          .toList();
+
+      expect(newMsgFrames.length, 2,
+          reason: 'should fan out member_leave to every active member except self');
+
+      final toB = newMsgFrames.where((f) => f.to == peerB).toList();
+      final toC = newMsgFrames.where((f) => f.to == peerC).toList();
+      expect(toB, hasLength(1));
+      expect(toC, hasLength(1));
+
+      // Each inner envelope should be MemberLeaveEnvelope with matching chatId,
+      // leftAt close to now, and a non-empty sigHex.
+      for (final f in newMsgFrames) {
+        final inner = InnerEnvelope.parse(
+            EnvelopeWire.parse(f.envelope).ciphertext!.sublist(1));
+        expect(inner, isA<MemberLeaveEnvelope>());
+        final leave = inner as MemberLeaveEnvelope;
+        expect(leave.chatId, gid);
+        expect(leave.sigHex, isNotEmpty);
+        // leftAt is within a few seconds of "before".
+        final delta = leave.leftAt.toUtc().difference(before.toUtc()).abs();
+        expect(delta.inSeconds, lessThan(10));
+      }
+    });
+
+    test('leaveGroup persists local state correctly', () async {
+      final gid = await setUpGroup();
+
+      await service.leaveGroup(chatId: gid);
+
+      // chats.leftAt is set.
+      final chatAfter = await dao.getChat(gid);
+      expect(chatAfter!.leftAt, isNotNull);
+
+      // self's group_members row has removedAt non-null and self is no longer
+      // an active member.
+      final all = await groupMembersDao.allMembers(gid);
+      final selfRow = all.firstWhere((m) => m.memberPubkeyHex == myPub);
+      expect(selfRow.removedAt, isNotNull);
+      final active = await groupMembersDao.activeMembers(gid);
+      expect(active.map((m) => m.memberPubkeyHex), isNot(contains(myPub)));
+
+      // A member_leave system message with body == 'You left' exists.
+      final msgs = await dao.watchMessages(gid).first;
+      final leaveMsgs = msgs.where((m) => m.kind == 'member_leave').toList();
+      expect(leaveMsgs, hasLength(1));
+      expect(leaveMsgs.first.senderPubkeyHex, myPub);
+      expect(leaveMsgs.first.body, 'You left');
+    });
+
+    test('group_ops_log records leave op with opSeq=null, applied=true',
+        () async {
+      final gid = await setUpGroup();
+
+      await service.leaveGroup(chatId: gid);
+
+      final ops = await groupOpsLogDao.forChat(gid);
+      final leaveOps = ops.where((o) => o.kind == 'leave').toList();
+
+      expect(leaveOps, hasLength(1));
+      expect(leaveOps.first.applied, isTrue);
+      expect(leaveOps.first.targetPubkeyHex, isNull);
+      expect(leaveOps.first.signerPubkeyHex, myPub);
+      expect(leaveOps.first.opSeq, isNull,
+          reason: 'leave is lamport-ordered, no opSeq');
+    });
+
+    test('member_leave sig field round-trips through SigningService.verify',
+        () async {
+      final gid = await setUpGroup();
+
+      await service.leaveGroup(chatId: gid);
+
+      // Pick the frame to B.
+      final msgFrame = relay.sent.lastWhere((f) =>
+          f.envelope.first == EnvelopeTag.message && f.to == peerB);
+
+      final parsedEnv = EnvelopeWire.parse(msgFrame.envelope);
+      final innerBytes = parsedEnv.ciphertext!.sublist(1);
+      final inner = InnerEnvelope.parse(innerBytes);
+      expect(inner, isA<MemberLeaveEnvelope>());
+      final leave = inner as MemberLeaveEnvelope;
+
+      // Rebuild the canonical bytes from the inner envelope JSON (omit 'sig').
+      final rawJson = jsonDecode(utf8.decode(innerBytes)) as Map<String, dynamic>;
+      final canonical = canonicalJsonBytes(rawJson, omit: 'sig');
+
+      final signerPubHex = await signing.publicKeyHex();
+      final ok = await SigningService.verify(
+        publicKeyHex: signerPubHex,
+        message: canonical,
+        signature: hexToBytes(leave.sigHex),
+      );
+      expect(ok, isTrue,
+          reason: 'member_leave sig must verify against self public key');
+    });
+
+    test('calling leaveGroup twice throws StateError on second call', () async {
+      final gid = await setUpGroup();
+
+      await service.leaveGroup(chatId: gid);
+
+      await expectLater(
+        () => service.leaveGroup(chatId: gid),
+        throwsStateError,
+      );
+    });
+
+    test('leaveGroup on a direct chat throws StateError', () async {
+      // ensureDirectChat creates a chat row with kind='direct'.
+      await dao.ensureDirectChat(peerB);
+
+      await expectLater(
+        () => service.leaveGroup(chatId: peerB),
+        throwsStateError,
+      );
+    });
+
+    test('leaveGroup when self is not an active member throws StateError',
+        () async {
+      // Forge a group where self isn't a member.
+      final forgedCreator = 'ee' * 32;
+      final gid = 'ff' * 16;
+      await dao.insertGroupChat(
+        chatId: gid,
+        groupName: 'ForgedGroup',
+        creatorPubkeyHex: forgedCreator,
+        createdAt: DateTime.now(),
+        initialOpSeq: 1,
+      );
+      await groupMembersDao.insertMember(
+        chatId: gid,
+        memberPubkeyHex: forgedCreator,
+        addedByPubkeyHex: forgedCreator,
+        addedAt: DateTime.now(),
+      );
+      await groupMembersDao.insertMember(
+        chatId: gid,
+        memberPubkeyHex: peerB,
+        addedByPubkeyHex: forgedCreator,
+        addedAt: DateTime.now(),
+      );
+
+      // myPub is NOT in group_members for this group.
+      await expectLater(
+        () => service.leaveGroup(chatId: gid),
+        throwsStateError,
+      );
+    });
+  });
+
   group('bundle-exchange state persists across restart (T3.4)', () {
     late Directory tempDir;
     late File dbFile;

@@ -478,6 +478,90 @@ class MessageService {
     }
   }
 
+  /// Leave a group. Any active member (including the creator) can leave.
+  /// Builds and fans out a signed `member_leave` JSON to every currently
+  /// active member except self. The local `chats.leftAt` is set so the
+  /// composer locks in the UI (spec §7.7).
+  ///
+  /// `member_leave` is lamport-ordered (no `opSeq` bump). The `group_ops_log`
+  /// row uses `opSeq: null`.
+  ///
+  /// Throws StateError if the chat doesn't exist, isn't a group, has already
+  /// been left, or self isn't currently an active member.
+  Future<void> leaveGroup({required String chatId}) async {
+    final chat = await dao.getChat(chatId);
+    if (chat == null || chat.kind != 'group') {
+      throw StateError('leaveGroup: not a group $chatId');
+    }
+    if (chat.leftAt != null) {
+      throw StateError('leaveGroup: already left $chatId');
+    }
+    if (!await groupMembersDao.isActiveMember(chatId, myPubkeyHex)) {
+      throw StateError('leaveGroup: not an active member');
+    }
+
+    // Snapshot recipients BEFORE markRemoved + setLeftAt so we capture the
+    // pre-leave membership for fan-out.
+    final activeBefore = await groupMembersDao.activeMembers(chatId);
+
+    final now = DateTime.now();
+    final lamport = await dao.bumpLamport(chatId);
+
+    // Local state mutations.
+    await dao.setLeftAt(chatId, now);
+    await groupMembersDao.markRemoved(
+      chatId: chatId,
+      memberPubkeyHex: myPubkeyHex,
+      removedAt: now,
+    );
+    await dao.insertMessage(MessagesCompanion.insert(
+      id: _uuid.v4(),
+      chatId: chatId,
+      senderPubkeyHex: myPubkeyHex,
+      body: 'You left',
+      lamport: lamport,
+      sentAt: now,
+      kind: const Value('member_leave'),
+    ));
+    await dao.updateLastMessage(chatId, 'You left', now);
+
+    // Build + sign member_leave (no opSeq field — leave is lamport-ordered).
+    final leaveBody = <String, dynamic>{
+      'v': 1, 'type': 'member_leave',
+      'chatId': chatId, 'lamport': lamport,
+      'leftAt': now.toUtc().toIso8601String(),
+    };
+    final canonical = canonicalJsonBytes(leaveBody);
+    final sigBytes = await signing.sign(canonical);
+    final sigHex = bytesToHex(sigBytes);
+    final leaveBytes = InnerEnvelope.buildMemberLeave(
+      chatId: chatId, lamport: lamport,
+      leftAt: now, sigHex: sigHex,
+    );
+
+    await groupOpsLogDao.append(
+      id: _uuid.v4(), chatId: chatId, opSeq: null,
+      kind: 'leave', targetPubkeyHex: null,
+      signerPubkeyHex: myPubkeyHex, signatureHex: sigHex,
+      applied: true,
+    );
+
+    _log('leaveGroup chatId=${_short(chatId)} lamport=$lamport '
+        'recipients=${activeBefore.length - 1}');
+
+    // Fan-out: every active-before member except self.
+    for (final m in activeBefore) {
+      if (m.memberPubkeyHex == myPubkeyHex) continue;
+      try {
+        await _maybeSendOwnBundle(m.memberPubkeyHex);
+        await _sendOrQueueGroupBytes(m.memberPubkeyHex, leaveBytes);
+      } catch (e, st) {
+        _log('leaveGroup fan-out FAIL peer=${_short(m.memberPubkeyHex)} '
+            'err=$e\n$st');
+      }
+    }
+  }
+
   String _randomChatId() {
     final rand = Random.secure();
     final bytes = List<int>.generate(16, (_) => rand.nextInt(256));
