@@ -1,4 +1,4 @@
-import 'dart:convert';
+import 'dart:convert' show base64Decode;
 
 import 'package:drift/drift.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -6,6 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:uuid/uuid.dart';
 
+import '../chat/group_envelope.dart';
 import '../chat/pre_key_bootstrap.dart';
 import '../core/hex_codec.dart';
 import '../data/app_database.dart';
@@ -124,10 +125,30 @@ Future<void> processFcmMessage(
       _log('decrypt FAILED from=${_short(senderPubkeyHex)} err=$e\n$st');
       return;
     }
-    final body = utf8.decode(plaintext);
 
+    final InnerEnvelope inner;
+    try {
+      inner = InnerEnvelope.parse(plaintext);
+    } on FormatException catch (e) {
+      _log('inner_parse_fail from=${_short(senderPubkeyHex)} err=$e');
+      return;
+    }
+
+    if (inner is! TextEnvelope) {
+      _log('non_text_inner_in_bg_path type=${inner.runtimeType} — deferred to T8');
+      return;
+    }
+
+    // Direct-chat spoof guard: inner.chatId must equal the libsignal-session sender.
+    if (inner.chatId != senderPubkeyHex) {
+      _log('direct_chat_id_mismatch from=${_short(senderPubkeyHex)} '
+          'innerChatId=${_short(inner.chatId)}');
+      return;
+    }
+
+    final body = inner.body;
     final now = DateTime.now();
-    final lamport = await dao.bumpLamport(senderPubkeyHex);
+    final lamport = await dao.observeLamport(senderPubkeyHex, inner.lamport);
     await dao.insertMessage(
       MessagesCompanion.insert(
         id: const Uuid().v4(),
@@ -137,6 +158,7 @@ Future<void> processFcmMessage(
         lamport: lamport,
         sentAt: now,
         receivedAt: Value(now),
+        kind: const Value('text'),
       ),
     );
     await dao.updateLastMessage(senderPubkeyHex, _preview(body), now);
