@@ -841,7 +841,14 @@ class MessageService {
       receivedAt: Value(now),
       kind: const Value('text'),
     ));
-    await dao.updateLastMessage(inner.chatId, _preview(body), now);
+    // Group-tile preview must include the sender prefix so receivers can tell
+    // who's talking. T7.1 punted on this; T8.1 fixes it here (foreground) and
+    // mirrors the same write in the background isolate. Outgoing self-sent
+    // group text writes raw preview (handled in sendGroupText).
+    final previewText = chat.kind == 'group'
+        ? '${_short(frame.fromPubkeyHex)}: ${_preview(body)}'
+        : _preview(body);
+    await dao.updateLastMessage(inner.chatId, previewText, now);
   }
 
   /// T6.1 — handle inbound `group_invite` envelope on the foreground path.

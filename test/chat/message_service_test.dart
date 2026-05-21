@@ -1872,7 +1872,12 @@ void main() {
 
       final chat = await dao.getChat(chatId);
       expect(chat, isNotNull);
-      expect(chat!.lastMessagePreview, 'hello group');
+      // T8.1: group-tile preview is prefixed with `<short(sender)>: ` so the
+      // chat list shows who's talking. _short in MessageService is 6/6.
+      expect(
+        chat!.lastMessagePreview,
+        '${memberA.substring(0, 6)}…${memberA.substring(memberA.length - 6)}: hello group',
+      );
     });
 
     test('group text from a removed member is dropped', () async {
