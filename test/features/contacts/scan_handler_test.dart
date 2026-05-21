@@ -39,4 +39,31 @@ void main() {
       expect(result.isValid, isFalse);
     });
   });
+
+  // Phase 10.3.1: the paste-pubkey flow in AddContactScreen reuses
+  // ScanHandler.parse as its validator, so cases that are realistic
+  // for hand-pasted (vs camera-scanned) input live here.
+  group('ScanHandler.parse — paste-mode cases', () {
+    test('accepts mixed-case hex and normalizes to lowercase', () {
+      final result = ScanHandler.parse('AaBbCcDd' * 8);
+      expect(result.isValid, isTrue);
+      expect(result.pubkeyHex, 'aabbccdd' * 8);
+    });
+
+    test('rejects one-char-too-long input', () {
+      final result = ScanHandler.parse('${'aa' * 32}a');
+      expect(result.isValid, isFalse);
+      expect(result.error, contains('expected 64'));
+    });
+
+    test('rejects pubkey with embedded space', () {
+      // 64 chars total with an internal space — a realistic
+      // copy/paste artifact from messengers that line-break long hex.
+      final bad = '${'a' * 31} ${'a' * 32}';
+      expect(bad.length, 64);
+      final result = ScanHandler.parse(bad);
+      expect(result.isValid, isFalse);
+      expect(result.error, contains('hex'));
+    });
+  });
 }
