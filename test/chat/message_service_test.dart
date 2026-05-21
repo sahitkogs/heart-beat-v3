@@ -1803,6 +1803,173 @@ void main() {
     });
   });
 
+  group('handle inbound group text (T6.2)', () {
+    /// Build a `text` envelope wrapped via EnvelopeWire.wrapMessage so it can
+    /// be emitted as a DeliverFrame. FakeCrypto strips the 0xCC prefix on
+    /// decrypt, so we prepend it to mimic ciphertext.
+    List<int> buildTextEnvelope({
+      required String chatId,
+      required int lamport,
+      required String body,
+    }) {
+      final innerBytes = InnerEnvelope.buildText(
+        chatId: chatId,
+        lamport: lamport,
+        body: body,
+      );
+      final ciphertext = [0xCC, ...innerBytes];
+      return EnvelopeWire.wrapMessage(ciphertext);
+    }
+
+    /// Seed a group chat where [myPub] is a member and [memberA] is an active
+    /// member. The chat is keyed by [chatId].
+    Future<void> seedGroupWithMemberA({
+      required String chatId,
+      required String memberA,
+    }) async {
+      final createdAt = DateTime.utc(2026, 5, 21);
+      await dao.insertGroupChat(
+        chatId: chatId,
+        groupName: 'Test Group',
+        creatorPubkeyHex: memberA,
+        createdAt: createdAt,
+        initialOpSeq: 1,
+      );
+      await groupMembersDao.insertMember(
+        chatId: chatId,
+        memberPubkeyHex: memberA,
+        addedByPubkeyHex: memberA,
+        addedAt: createdAt,
+      );
+      await groupMembersDao.insertMember(
+        chatId: chatId,
+        memberPubkeyHex: myPub,
+        addedByPubkeyHex: memberA,
+        addedAt: createdAt,
+      );
+    }
+
+    test('group text from an active member is persisted under the group chat',
+        () async {
+      final memberA = 'a1' * 32;
+      final chatId = 'cd' * 16;
+      await seedGroupWithMemberA(chatId: chatId, memberA: memberA);
+
+      final envelope = buildTextEnvelope(
+        chatId: chatId,
+        lamport: 1,
+        body: 'hello group',
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: memberA, envelope: envelope));
+      await drainMicrotasks();
+
+      final msgs = await dao.watchMessages(chatId).first;
+      final textRows = msgs.where((m) => m.kind == 'text').toList();
+      expect(textRows, hasLength(1));
+      expect(textRows.first.chatId, chatId);
+      expect(textRows.first.senderPubkeyHex, memberA);
+      expect(textRows.first.body, 'hello group');
+
+      final chat = await dao.getChat(chatId);
+      expect(chat, isNotNull);
+      expect(chat!.lastMessagePreview, 'hello group');
+    });
+
+    test('group text from a removed member is dropped', () async {
+      final memberA = 'a2' * 32;
+      final chatId = 'ce' * 16;
+      await seedGroupWithMemberA(chatId: chatId, memberA: memberA);
+      // Remove A from the group BEFORE the text arrives.
+      await groupMembersDao.markRemoved(
+        chatId: chatId,
+        memberPubkeyHex: memberA,
+        removedAt: DateTime.utc(2026, 5, 21, 1),
+      );
+
+      final envelope = buildTextEnvelope(
+        chatId: chatId,
+        lamport: 1,
+        body: 'sneaky',
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: memberA, envelope: envelope));
+      await drainMicrotasks();
+
+      final msgs = await dao.watchMessages(chatId).first;
+      expect(msgs.where((m) => m.senderPubkeyHex == memberA && m.kind == 'text'),
+          isEmpty,
+          reason: 'removed members must not be able to inject group messages');
+    });
+
+    test('group text claiming an unknown chatId is dropped', () async {
+      final memberA = 'a3' * 32;
+      final unknownChatId = 'ef' * 16;
+      // Do NOT seed any chat row for unknownChatId.
+
+      final envelope = buildTextEnvelope(
+        chatId: unknownChatId,
+        lamport: 1,
+        body: 'phantom',
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: memberA, envelope: envelope));
+      await drainMicrotasks();
+
+      // No chat row for unknownChatId got created.
+      expect(await dao.getChat(unknownChatId), isNull);
+      // No message row attributed to the unknown chat.
+      final msgs = await dao.watchMessages(unknownChatId).first;
+      expect(msgs, isEmpty);
+    });
+
+    test('direct-chat spoof guard: text claiming a different existing direct '
+        'chat is dropped', () async {
+      // Two direct chats pre-seeded: one with peerA (the actual sender) and
+      // one with peerB (the spoof target). Sender = peerA, but inner.chatId
+      // claims peerB. Should be dropped by the direct kind == 'direct' guard.
+      final peerA = 'a4' * 32;
+      final peerB = 'b4' * 32;
+      await dao.ensureDirectChat(peerA);
+      await dao.ensureDirectChat(peerB);
+
+      final envelope = buildTextEnvelope(
+        chatId: peerB, // wrong — should be peerA (the actual sender)
+        lamport: 1,
+        body: 'spoof',
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: peerA, envelope: envelope));
+      await drainMicrotasks();
+
+      // The spoofed-target chat must NOT receive a message row.
+      final msgsB = await dao.watchMessages(peerB).first;
+      expect(msgsB.where((m) => m.body == 'spoof'), isEmpty,
+          reason: 'spoof must not write to the claimed direct chat');
+      // The sender's actual chat must also NOT receive this message (we
+      // dropped before insert), only the auto-created chat row exists.
+      final msgsA = await dao.watchMessages(peerA).first;
+      expect(msgsA.where((m) => m.body == 'spoof'), isEmpty);
+    });
+
+    test('direct text happy path still works (T4.2 regression)', () async {
+      // peerA sends a text addressed to its own chat (chatId == sender).
+      final peerA = 'a5' * 32;
+      // No need to pre-seed — `_handleDeliver` calls `ensureDirectChat`
+      // on EVERY inbound deliver, which creates the chat row before the
+      // text branch runs.
+      final envelope = buildTextEnvelope(
+        chatId: peerA,
+        lamport: 1,
+        body: 'hello direct',
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: peerA, envelope: envelope));
+      await drainMicrotasks();
+
+      final msgs = await dao.watchMessages(peerA).first;
+      expect(msgs, hasLength(1));
+      expect(msgs.first.chatId, peerA);
+      expect(msgs.first.senderPubkeyHex, peerA);
+      expect(msgs.first.body, 'hello direct');
+    });
+  });
+
   group('bundle-exchange state persists across restart (T3.4)', () {
     late Directory tempDir;
     late File dbFile;

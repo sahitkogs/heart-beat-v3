@@ -775,21 +775,50 @@ class MessageService {
       return;
     }
 
-    // Direct-chat spoof guard: inner.chatId must equal the libsignal-session sender.
-    if (inner.chatId != frame.fromPubkeyHex) {
-      _log('direct_chat_id_mismatch from=${_short(frame.fromPubkeyHex)} '
-          'innerChatId=${_short(inner.chatId)}');
+    // T6.2 — route based on chat kind. The inner.chatId tells us which chat
+    // this text belongs to; we verify the sender's authority for that chat.
+    final chat = await dao.getChat(inner.chatId);
+    if (chat == null) {
+      _log('[Group] msg_unknown_chat from=${_short(frame.fromPubkeyHex)} '
+          'chat=${_short(inner.chatId)}');
+      return;
+    }
+
+    if (chat.kind == 'direct') {
+      // Existing T4.2 spoof guard: inner.chatId must equal the
+      // libsignal-session sender. For direct chats the chatId IS the peer's
+      // pubkey, so this rejects messages claiming to come from a third party.
+      if (inner.chatId != frame.fromPubkeyHex) {
+        _log('direct_chat_id_mismatch from=${_short(frame.fromPubkeyHex)} '
+            'innerChatId=${_short(inner.chatId)}');
+        return;
+      }
+    } else if (chat.kind == 'group') {
+      // The sender must be an active member of the group they claim to be
+      // messaging. Drops messages from removed/never-joined members.
+      final active = await groupMembersDao.isActiveMember(
+          inner.chatId, frame.fromPubkeyHex);
+      if (!active) {
+        _log('[Group] msg_from_non_member from=${_short(frame.fromPubkeyHex)} '
+            'chat=${_short(inner.chatId)}');
+        return;
+      }
+    } else {
+      _log('unknown_chat_kind kind=${chat.kind} chat=${_short(inner.chatId)}');
       return;
     }
 
     final body = inner.body;
-    _log('decrypted from=${_short(frame.fromPubkeyHex)} bodyLen=${body.length}');
+    _log('decrypted from=${_short(frame.fromPubkeyHex)} '
+        'chat=${_short(inner.chatId)} bodyLen=${body.length}');
 
-    final lamport = await dao.observeLamport(frame.fromPubkeyHex, inner.lamport);
+    // Lamport tracking is per-chat (per-group for groups). For direct chats
+    // inner.chatId == frame.fromPubkeyHex so behavior matches pre-T6.2.
+    final lamport = await dao.observeLamport(inner.chatId, inner.lamport);
     final now = DateTime.now();
     await dao.insertMessage(MessagesCompanion.insert(
       id: _uuid.v4(),
-      chatId: frame.fromPubkeyHex,
+      chatId: inner.chatId,
       senderPubkeyHex: frame.fromPubkeyHex,
       body: body,
       lamport: lamport,
@@ -797,7 +826,7 @@ class MessageService {
       receivedAt: Value(now),
       kind: const Value('text'),
     ));
-    await dao.updateLastMessage(frame.fromPubkeyHex, _preview(body), now);
+    await dao.updateLastMessage(inner.chatId, _preview(body), now);
   }
 
   /// T6.1 — handle inbound `group_invite` envelope on the foreground path.
