@@ -261,6 +261,134 @@ class MessageService {
     }
   }
 
+  /// Add a new member to a group. Only the creator can add. Builds and fans out
+  /// a signed `member_add` JSON to existing members, plus a signed `group_invite`
+  /// JSON (joinedVia='add') to the new member with the updated members list.
+  ///
+  /// Throws StateError if the chat doesn't exist, isn't a group, or self isn't
+  /// the creator. Throws ArgumentError if adding would exceed 8 members or the
+  /// target is already an active member.
+  Future<void> addMemberToGroup({
+    required String chatId,
+    required String newMemberPubkeyHex,
+  }) async {
+    final chat = await dao.getChat(chatId);
+    if (chat == null || chat.kind != 'group') {
+      throw StateError('addMemberToGroup: not a group $chatId');
+    }
+    if (chat.creatorPubkeyHex != myPubkeyHex) {
+      throw StateError('addMemberToGroup: not creator');
+    }
+    if (await groupMembersDao.isActiveMember(chatId, newMemberPubkeyHex)) {
+      throw ArgumentError('already an active member');
+    }
+    final activeBefore = await groupMembersDao.activeMembers(chatId);
+    if (activeBefore.length >= 8) {
+      throw ArgumentError('group full (8 max)');
+    }
+
+    final now = DateTime.now();
+    final newOpSeq = chat.lastOpSeq + 1;
+
+    // Local state
+    await dao.bumpLastOpSeq(chatId, newOpSeq);
+    await groupMembersDao.insertMember(
+      chatId: chatId, memberPubkeyHex: newMemberPubkeyHex,
+      addedByPubkeyHex: myPubkeyHex, addedAt: now,
+    );
+    final lamport = await dao.bumpLamport(chatId);
+    await dao.insertMessage(MessagesCompanion.insert(
+      id: _uuid.v4(),
+      chatId: chatId,
+      senderPubkeyHex: myPubkeyHex,
+      body: 'You added ${_short(newMemberPubkeyHex)}',
+      lamport: lamport,
+      sentAt: now,
+      kind: const Value('member_add'),
+    ));
+    await dao.updateLastMessage(chatId, 'You added ${_short(newMemberPubkeyHex)}', now);
+
+    // Build + sign member_add (for existing members)
+    final addBody = <String, dynamic>{
+      'v': 1, 'type': 'member_add',
+      'chatId': chatId, 'lamport': lamport,
+      'target': newMemberPubkeyHex,
+      'addedAt': now.toUtc().toIso8601String(),
+      'opSeq': newOpSeq,
+    };
+    final addCanonical = canonicalJsonBytes(addBody);
+    final addSig = await signing.sign(addCanonical);
+    final addSigHex = bytesToHex(addSig);
+    final addBytes = InnerEnvelope.buildMemberAdd(
+      chatId: chatId, lamport: lamport, target: newMemberPubkeyHex,
+      addedAt: now, opSeq: newOpSeq, sigHex: addSigHex,
+    );
+
+    // Build + sign group_invite (for new joiner) with the UPDATED members list.
+    // Use chat.createdAt so the new joiner sees the same group origin timestamp.
+    final updatedMembers = [
+      ...activeBefore.map((m) => m.memberPubkeyHex),
+      newMemberPubkeyHex,
+    ];
+    final inviteBody = <String, dynamic>{
+      'v': 1, 'type': 'group_invite',
+      'chatId': chatId, 'lamport': 0,
+      'groupName': chat.groupName!,
+      'creator': myPubkeyHex,
+      'members': updatedMembers,
+      'createdAt': chat.createdAt.toUtc().toIso8601String(),
+      'opSeq': newOpSeq,
+      'joinedVia': 'add',
+    };
+    final inviteCanonical = canonicalJsonBytes(inviteBody);
+    final inviteSig = await signing.sign(inviteCanonical);
+    final inviteSigHex = bytesToHex(inviteSig);
+    final inviteBytes = InnerEnvelope.buildGroupInvite(
+      chatId: chatId, groupName: chat.groupName!, creator: myPubkeyHex,
+      members: updatedMembers, createdAt: chat.createdAt,
+      opSeq: newOpSeq, joinedVia: 'add', sigHex: inviteSigHex,
+      // lamport defaults to 0
+    );
+
+    // Log both ops
+    await groupOpsLogDao.append(
+      id: _uuid.v4(), chatId: chatId, opSeq: newOpSeq,
+      kind: 'add', targetPubkeyHex: newMemberPubkeyHex,
+      signerPubkeyHex: myPubkeyHex, signatureHex: addSigHex,
+      applied: true,
+    );
+    await groupOpsLogDao.append(
+      id: _uuid.v4(), chatId: chatId, opSeq: newOpSeq,
+      kind: 'create',  // joinedVia='add' is logged as create-shape since it's an invite envelope
+      targetPubkeyHex: newMemberPubkeyHex,
+      signerPubkeyHex: myPubkeyHex, signatureHex: inviteSigHex,
+      applied: true,
+    );
+
+    _log('addMemberToGroup chatId=${_short(chatId)} new=${_short(newMemberPubkeyHex)} '
+        'opSeq=$newOpSeq');
+
+    // Fan-out
+    // 1. member_add to all existing active members EXCEPT self AND new joiner.
+    for (final m in activeBefore) {
+      if (m.memberPubkeyHex == myPubkeyHex) continue;
+      if (m.memberPubkeyHex == newMemberPubkeyHex) continue; // can't happen (just inserted)
+      try {
+        await _maybeSendOwnBundle(m.memberPubkeyHex);
+        await _sendOrQueueGroupBytes(m.memberPubkeyHex, addBytes);
+      } catch (e, st) {
+        _log('addMember fan-out FAIL existing=${_short(m.memberPubkeyHex)} err=$e\n$st');
+      }
+    }
+    // 2. group_invite to the new joiner. Bundle bootstrap may be required.
+    try {
+      await _maybeSendOwnBundle(newMemberPubkeyHex);
+      await _sendOrQueueGroupBytes(newMemberPubkeyHex, inviteBytes);
+    } catch (e, st) {
+      _log('addMember fan-out FAIL newJoiner=${_short(newMemberPubkeyHex)} err=$e\n$st');
+    }
+  }
+
   String _randomChatId() {
     final rand = Random.secure();
     final bytes = List<int>.generate(16, (_) => rand.nextInt(256));

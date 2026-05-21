@@ -109,6 +109,10 @@ class _MemStorage implements SecureKeyValueStorage {
   Future<void> delete(String key) async => _store.remove(key);
 }
 
+/// Mirror of MessageService._short used in test assertions.
+String _shortPub(String hex) =>
+    hex.length >= 16 ? '${hex.substring(0, 6)}…${hex.substring(hex.length - 6)}' : hex;
+
 /// Creates a [SigningService] with a freshly generated identity key so tests
 /// can call [signing.sign] and [SigningService.verify] without touching device
 /// Keystore.
@@ -995,6 +999,168 @@ void main() {
       expect(
         () => service.sendGroupText(chatId: gid, body: 'after-leave'),
         throwsStateError,
+      );
+    });
+  });
+
+  group('addMemberToGroup (T5.3)', () {
+    final peerB = 'bb' * 32;
+    final peerC = 'cc' * 32;
+    final peerD = 'dd' * 32;
+
+    /// Creates a {self=myPub, B, C} group with bundles pre-marked for B and C.
+    Future<String> setUpGroup() async {
+      await peerBundleDao.markPeerBundleReceived(peerB);
+      await peerBundleDao.markPeerBundleReceived(peerC);
+      return service.createGroup(
+        name: 'TestGroup',
+        memberPubkeysHex: [peerB, peerC],
+      );
+    }
+
+    test('3-member group; creator adds D; fan-out is correct', () async {
+      final gid = await setUpGroup();
+      await peerBundleDao.markPeerBundleReceived(peerD);
+
+      final sentBefore = relay.sent.length;
+      await service.addMemberToGroup(chatId: gid, newMemberPubkeyHex: peerD);
+
+      // Collect only the NEW message frames produced by addMemberToGroup.
+      final newMsgFrames = relay.sent
+          .skip(sentBefore)
+          .where((f) => f.envelope.first == EnvelopeTag.message)
+          .toList();
+
+      // Expect exactly 3: member_add to B, member_add to C, group_invite to D.
+      expect(newMsgFrames.length, 3,
+          reason: 'should fan out 2 member_add + 1 group_invite');
+
+      final toB = newMsgFrames.where((f) => f.to == peerB).toList();
+      final toC = newMsgFrames.where((f) => f.to == peerC).toList();
+      final toD = newMsgFrames.where((f) => f.to == peerD).toList();
+
+      expect(toB, hasLength(1), reason: 'B should receive member_add');
+      expect(toC, hasLength(1), reason: 'C should receive member_add');
+      expect(toD, hasLength(1), reason: 'D should receive group_invite');
+
+      // Verify B receives a member_add.
+      final bInner = InnerEnvelope.parse(
+          EnvelopeWire.parse(toB.first.envelope).ciphertext!.sublist(1));
+      expect(bInner, isA<MemberAddEnvelope>());
+      expect((bInner as MemberAddEnvelope).target, peerD);
+
+      // Verify C receives a member_add.
+      final cInner = InnerEnvelope.parse(
+          EnvelopeWire.parse(toC.first.envelope).ciphertext!.sublist(1));
+      expect(cInner, isA<MemberAddEnvelope>());
+      expect((cInner as MemberAddEnvelope).target, peerD);
+
+      // Verify D receives a group_invite with joinedVia='add' and all 4 members.
+      final dInner = InnerEnvelope.parse(
+          EnvelopeWire.parse(toD.first.envelope).ciphertext!.sublist(1));
+      expect(dInner, isA<GroupInviteEnvelope>());
+      final invite = dInner as GroupInviteEnvelope;
+      expect(invite.joinedVia, 'add');
+      expect(invite.members, containsAll([myPub, peerB, peerC, peerD]));
+      expect(invite.members.length, 4);
+    });
+
+    test('non-creator addMemberToGroup throws StateError', () async {
+      // Forge a group where creator is 'X' but self (myPub) is a plain member.
+      final forgedCreator = 'ee' * 32;
+      final gid = 'ff' * 16; // synthetic chatId
+      await dao.insertGroupChat(
+        chatId: gid,
+        groupName: 'ForgedGroup',
+        creatorPubkeyHex: forgedCreator,
+        createdAt: DateTime.now(),
+        initialOpSeq: 1,
+      );
+      await groupMembersDao.insertMember(
+        chatId: gid,
+        memberPubkeyHex: myPub,
+        addedByPubkeyHex: forgedCreator,
+        addedAt: DateTime.now(),
+      );
+
+      expect(
+        () => service.addMemberToGroup(chatId: gid, newMemberPubkeyHex: peerD),
+        throwsStateError,
+      );
+    });
+
+    test('addMemberToGroup persists local state correctly', () async {
+      final gid = await setUpGroup();
+      await peerBundleDao.markPeerBundleReceived(peerD);
+
+      final chatBefore = await dao.getChat(gid);
+      final oldOpSeq = chatBefore!.lastOpSeq;
+
+      await service.addMemberToGroup(chatId: gid, newMemberPubkeyHex: peerD);
+
+      // D is now an active member.
+      final members = await groupMembersDao.activeMembers(gid);
+      final memberKeys = members.map((m) => m.memberPubkeyHex).toSet();
+      expect(memberKeys, contains(peerD));
+
+      // lastOpSeq bumped by 1.
+      final chatAfter = await dao.getChat(gid);
+      expect(chatAfter!.lastOpSeq, oldOpSeq + 1);
+
+      // A member_add system message was inserted.
+      final msgs = await dao.watchMessages(gid).first;
+      final addMsg = msgs.where((m) => m.kind == 'member_add').toList();
+      expect(addMsg, hasLength(1));
+      expect(addMsg.first.senderPubkeyHex, myPub);
+      expect(addMsg.first.body, contains(_shortPub(peerD)));
+    });
+
+    test('group_ops_log records both ops with applied=true', () async {
+      final gid = await setUpGroup();
+      await peerBundleDao.markPeerBundleReceived(peerD);
+
+      await service.addMemberToGroup(chatId: gid, newMemberPubkeyHex: peerD);
+
+      final ops = await groupOpsLogDao.forChat(gid);
+      // The first op (from createGroup) is 'create'; then we add 'add' + 'create'.
+      final addOps = ops.where((o) => o.kind == 'add').toList();
+      final createOps = ops.where((o) => o.kind == 'create').toList();
+
+      expect(addOps, hasLength(1), reason: 'should have one add op');
+      expect(addOps.first.applied, isTrue);
+      expect(addOps.first.targetPubkeyHex, peerD);
+
+      // Two create-kind entries total: the original createGroup + the invite for D.
+      expect(createOps.length, greaterThanOrEqualTo(1));
+      final inviteOp = createOps.lastWhere((o) => o.targetPubkeyHex == peerD);
+      expect(inviteOp.applied, isTrue);
+    });
+
+    test('adding 9th member throws ArgumentError', () async {
+      // Build a group already at 8 members (self + 7 others).
+      final others = List.generate(7, (i) => i.toRadixString(16).padLeft(2, '0') * 32);
+      for (final p in others) {
+        await peerBundleDao.markPeerBundleReceived(p);
+      }
+      final gid = await service.createGroup(
+        name: 'FullGroup',
+        memberPubkeysHex: others,
+      );
+
+      // activeBefore.length == 8 → adding one more should throw.
+      await expectLater(
+        () => service.addMemberToGroup(chatId: gid, newMemberPubkeyHex: peerD),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('adding an already-active member throws ArgumentError', () async {
+      final gid = await setUpGroup();
+
+      // peerB is already an active member.
+      await expectLater(
+        () => service.addMemberToGroup(chatId: gid, newMemberPubkeyHex: peerB),
+        throwsA(isA<ArgumentError>()),
       );
     });
   });
