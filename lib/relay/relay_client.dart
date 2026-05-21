@@ -43,6 +43,12 @@ class RelayClient {
           'X-Heartbeat-Timestamp': tsStr,
         },
       );
+      // Client-side pings + close-on-missed-pong. Without this, a TCP
+      // half-open after server-side close (or wifi flap) is invisible to
+      // the application: sink.add succeeds into the void, onDone never
+      // fires, and every send is silently dropped. Pair with the server's
+      // 15s ping-loop so either side can detect death within ~20s.
+      webSocket.pingInterval = const Duration(seconds: 15);
       _channel = IOWebSocketChannel(webSocket);
       _log('connected');
     } catch (e, st) {
