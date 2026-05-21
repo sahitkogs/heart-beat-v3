@@ -44,12 +44,14 @@ final messageServiceProvider = FutureProvider<MessageService>((ref) async {
   final crypto = await ref.watch(cryptoServiceProvider.future);
   final relay = await ref.watch(relayClientProvider.future);
   final dao = ref.watch(chatsDaoProvider);
+  final peerBundleDao = ref.watch(peerBundleStateDaoProvider);
   final identity = await ref.watch(identityProvider.future);
   final wake = ref.watch(wakeClientProvider);
   final svc = MessageService(
     crypto: crypto,
     relay: relay,
     dao: dao,
+    peerBundleDao: peerBundleDao,
     myPubkeyHex: identity.publicKeyHex,
     wake: wake,
   );

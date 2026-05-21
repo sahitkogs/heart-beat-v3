@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../data/app_database.dart';
 import '../data/chats_dao.dart';
+import '../data/peer_bundle_state_dao.dart';
 import '../relay/relay_client.dart';
 import '../relay/relay_frames.dart';
 import '../services/crypto_service.dart';
@@ -19,6 +20,7 @@ class MessageService {
     required this.crypto,
     required this.relay,
     required this.dao,
+    required this.peerBundleDao,
     required this.myPubkeyHex,
     this.wake,
   }) {
@@ -28,6 +30,7 @@ class MessageService {
   final CryptoService crypto;
   final RelayClient relay;
   final ChatsDao dao;
+  final PeerBundleStateDao peerBundleDao;
   final String myPubkeyHex;
   // Optional in tests; production wiring always supplies one via the
   // messageServiceProvider. When null, recipient_offline errors are logged
@@ -41,17 +44,12 @@ class MessageService {
   // encrypt to a peer until that peer's PreKey bundle has been processed, so
   // we must wait until we receive it before sending the first message.
   //
-  // bundleSentAt / peerBundleReceivedAt live in drift (T3.1) so a background
-  // FCM isolate (Phase 10.3 T7) doesn't re-run the bundle dance on every wake.
+  // bundleSentAt / peerBundleReceivedAt live in PeerBundleStateDao (T3.1) so a
+  // background FCM isolate (Phase 10.3 T7) doesn't re-run the bundle dance on
+  // every wake, and state survives app restarts.
   // Only the pending-outbound queue stays in-memory — it's session-scoped and
   // drains the moment the peer's bundle arrives.
   final Map<String, List<String>> _pendingByPeer = <String, List<String>>{};
-
-  // TODO(T3.5): In-session substitutes for the PeerBundleState DB columns.
-  // Populated in _handleDeliver / _maybeSendOwnBundle. Correct for new sessions;
-  // cross-restart idempotency is restored when T3.5 re-wires to PeerBundleStateDao.
-  final Set<String> _peerBundleReceivedInSession = <String>{};
-  final Set<String> _bundleSentInSession = <String>{};
 
   // Envelopes (message ones only, NOT bundles) that we've handed to the
   // relay but haven't proven made it to the peer. On a `recipient_offline`
@@ -77,11 +75,8 @@ class MessageService {
     await _maybeSendOwnBundle(peerPubkeyHex);
     await _persistOutbound(peerPubkeyHex, body);
 
-    // TODO(T3.5): re-wire peerBundleReceivedAt check via PeerBundleStateDao.
-    // Until T3, use an in-session set as a substitute. Correct for new sessions;
-    // cross-restart idempotency (skip queue if peer bundle already received
-    // in a prior session) is restored in T3.
-    if (!_peerBundleReceivedInSession.contains(peerPubkeyHex)) {
+    final peerState = await peerBundleDao.get(peerPubkeyHex);
+    if (peerState?.peerBundleReceivedAt == null) {
       (_pendingByPeer[peerPubkeyHex] ??= <String>[]).add(body);
       _log('queued (no peer bundle yet) peer=${_short(peerPubkeyHex)} '
           'queueDepth=${_pendingByPeer[peerPubkeyHex]!.length}');
@@ -97,10 +92,9 @@ class MessageService {
   }
 
   Future<void> _maybeSendOwnBundle(String peerPubkeyHex) async {
-    // TODO(T3.5): re-wire bundleSentAt check via PeerBundleStateDao (for
-    // cross-restart idempotency). Until T3, use in-session set as substitute.
-    if (_bundleSentInSession.contains(peerPubkeyHex)) {
-      _log('bundle already sent this session to ${_short(peerPubkeyHex)}');
+    final state = await peerBundleDao.get(peerPubkeyHex);
+    if (state?.bundleSentAt != null) {
+      _log('bundle already sent to ${_short(peerPubkeyHex)}');
       return;
     }
     final myBundle = await crypto.myPreKeyBundle();
@@ -109,8 +103,7 @@ class MessageService {
       toPubkeyHex: peerPubkeyHex,
       envelope: EnvelopeWire.wrapPreKeyBundle(stamped),
     );
-    _bundleSentInSession.add(peerPubkeyHex);
-    // TODO(T3.5): dao.markBundleSent(peerPubkeyHex) — via PeerBundleStateDao.
+    await peerBundleDao.markBundleSent(peerPubkeyHex);
     _log('sent OUR bundle to ${_short(peerPubkeyHex)} (preKeyId='
         '${stamped.preKeyId} regId=${stamped.registrationId})');
   }
@@ -172,8 +165,7 @@ class MessageService {
       // bundle on the next send.
       _log('wake_skipped no_in_flight peer=${_short(peer)} '
           '(likely failed bundle send; resetting bundleSent for retry)');
-      // TODO(T3.5): dao.clearBundleSent(peer) — via PeerBundleStateDao.
-      _bundleSentInSession.remove(peer);
+      await peerBundleDao.clearBundleSent(peer);
       return;
     }
     final envelope = queue.removeAt(0);
@@ -221,20 +213,17 @@ class MessageService {
     if (parsed.isBundle) {
       _log('inbound BUNDLE from=${_short(frame.fromPubkeyHex)} '
           'preKeyId=${parsed.bundle!.preKeyId} regId=${parsed.bundle!.registrationId}');
-      // TODO(T3.5): re-wire peerBundleReceivedAt / markPeerBundleReceived /
-      // clearBundleSent via PeerBundleStateDao. Until T3, use in-session sets.
-      final isFirstFromPeer = !_peerBundleReceivedInSession.contains(frame.fromPubkeyHex);
+      final existingState = await peerBundleDao.get(frame.fromPubkeyHex);
+      final isFirstFromPeer = existingState?.peerBundleReceivedAt == null;
       try {
         await crypto.processPeerPreKeyBundle(parsed.bundle!);
       } catch (e, st) {
         _log('processBundle FAIL: $e\n$st');
         return;
       }
-      // TODO(T3.5): dao.markPeerBundleReceived(frame.fromPubkeyHex) — via PeerBundleStateDao.
-      _peerBundleReceivedInSession.add(frame.fromPubkeyHex);
+      await peerBundleDao.markPeerBundleReceived(frame.fromPubkeyHex);
       if (isFirstFromPeer) {
-        // TODO(T3.5): dao.clearBundleSent(frame.fromPubkeyHex) — via PeerBundleStateDao.
-        _bundleSentInSession.remove(frame.fromPubkeyHex);
+        await peerBundleDao.clearBundleSent(frame.fromPubkeyHex);
         try {
           await _maybeSendOwnBundle(frame.fromPubkeyHex);
         } catch (e, st) {

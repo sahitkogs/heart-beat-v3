@@ -6,6 +6,7 @@ import 'package:app_v3/chat/message_service.dart';
 import 'package:app_v3/chat/pre_key_bootstrap.dart';
 import 'package:app_v3/data/app_database.dart';
 import 'package:app_v3/data/chats_dao.dart';
+import 'package:app_v3/data/peer_bundle_state_dao.dart';
 import 'package:app_v3/relay/relay_client.dart';
 import 'package:app_v3/relay/relay_frames.dart';
 import 'package:app_v3/services/crypto_pre_key_bundle.dart';
@@ -151,6 +152,7 @@ void main() {
 
   late AppDatabase db;
   late ChatsDao dao;
+  late PeerBundleStateDao peerBundleDao;
   late _FakeCrypto crypto;
   late _FakeRelay relay;
   late MessageService service;
@@ -178,12 +180,14 @@ void main() {
   setUp(() {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     dao = ChatsDao(db);
+    peerBundleDao = PeerBundleStateDao(db);
     crypto = _FakeCrypto();
     relay = _FakeRelay();
     service = MessageService(
       crypto: crypto,
       relay: relay,
       dao: dao,
+      peerBundleDao: peerBundleDao,
       myPubkeyHex: myPub,
     );
   });
@@ -353,6 +357,7 @@ void main() {
         crypto: crypto,
         relay: relay,
         dao: dao,
+        peerBundleDao: peerBundleDao,
         myPubkeyHex: myPub,
         wake: wake,
       );
@@ -402,9 +407,31 @@ void main() {
 
     test('no in-flight envelope: bundle-send recipient_offline clears '
         'bundleSent and skips wake', () async {
-      // bundleSentAt assertions moved to PeerBundleStateDao in T3.1.
-      // Body stubbed so the file compiles without Chat.bundleSentAt.
-    }, skip: 'rewritten against PeerBundleStateDao in T3.1');
+      await setUpWith(() => const WakeResult(WakeStatus.ok));
+      // openChat sends our bundle but there is no message in-flight.
+      await wakeService.openChat(peerPub);
+
+      // The bundle send sets bundleSentAt in PeerBundleStateDao.
+      final stateBefore = await peerBundleDao.get(peerPub);
+      expect(stateBefore?.bundleSentAt, isNotNull,
+          reason: 'bundleSentAt must be set after openChat sends our bundle');
+
+      // Relay reports the bundle recipient was offline — no message queue.
+      relay.emit(ErrorFrame(
+        code: 'recipient_offline',
+        message: '',
+        toPubkeyHex: peerPub,
+      ));
+      await drainMicrotasks();
+
+      // bundleSentAt must be cleared so the next openChat will retry.
+      final stateAfter = await peerBundleDao.get(peerPub);
+      expect(stateAfter?.bundleSentAt, isNull,
+          reason: 'clearBundleSent must be called when bundle send fails');
+
+      // No wake dispatch — there was no message envelope to bridge.
+      expect(wake.calls, isEmpty);
+    });
 
     test('bundle-send recovery: after a failed bundle send, the next openChat '
         'retries', () async {
@@ -485,7 +512,6 @@ void main() {
 
   group('bundle-exchange state persists across restart (T3.4)', () {
     late Directory tempDir;
-    // ignore: unused_local_variable
     late File dbFile;
 
     setUp(() async {
@@ -501,8 +527,67 @@ void main() {
 
     test('session 2 over the same DB does not re-send our bundle and does not '
         're-queue messages', () async {
-      // bundleSentAt / peerBundleReceivedAt assertions moved to PeerBundleStateDao
-      // in T3.1. Body stubbed so the file compiles without those Chat fields.
-    }, skip: 'rewritten against PeerBundleStateDao in T3.1');
+      // ---- Session 1: full bundle exchange ----
+      final db1 = AppDatabase.forTesting(NativeDatabase(dbFile));
+      final dao1 = ChatsDao(db1);
+      final peerBundleDao1 = PeerBundleStateDao(db1);
+      final crypto1 = _FakeCrypto();
+      final relay1 = _FakeRelay();
+      final service1 = MessageService(
+        crypto: crypto1,
+        relay: relay1,
+        dao: dao1,
+        peerBundleDao: peerBundleDao1,
+        myPubkeyHex: myPub,
+      );
+
+      await service1.openChat(peerPub);
+      relay1.emit(DeliverFrame(
+        fromPubkeyHex: peerPub,
+        envelope: EnvelopeWire.wrapPreKeyBundle(peerBundle()),
+      ));
+      await drainMicrotasks();
+
+      // Sanity: session 1 marked both flags in PeerBundleStateDao.
+      final row1 = await peerBundleDao1.get(peerPub);
+      expect(row1?.bundleSentAt, isNotNull);
+      expect(row1?.peerBundleReceivedAt, isNotNull);
+
+      await service1.dispose();
+      await relay1.dispose();
+      await db1.close();
+
+      // ---- Session 2: fresh in-process objects over same DB file ----
+      final db2 = AppDatabase.forTesting(NativeDatabase(dbFile));
+      final dao2 = ChatsDao(db2);
+      final peerBundleDao2 = PeerBundleStateDao(db2);
+      final crypto2 = _FakeCrypto();
+      final relay2 = _FakeRelay();
+      final service2 = MessageService(
+        crypto: crypto2,
+        relay: relay2,
+        dao: dao2,
+        peerBundleDao: peerBundleDao2,
+        myPubkeyHex: myPub,
+      );
+
+      // openChat in session 2 must NOT emit a bundle because bundleSentAt
+      // is already non-null — the whole point of T3.5.
+      await service2.openChat(peerPub);
+      expect(relay2.sent, isEmpty);
+
+      // sendText must NOT queue because peerBundleReceivedAt is already non-null;
+      // it should encrypt and send immediately.
+      await service2.sendText(peerPubkeyHex: peerPub, body: 'after restart');
+      expect(crypto2.encryptCalls, 1);
+      final msgFrames = relay2.sent
+          .where((f) => f.envelope.first == EnvelopeTag.message)
+          .toList();
+      expect(msgFrames.length, 1);
+
+      await service2.dispose();
+      await relay2.dispose();
+      await db2.close();
+    });
   });
 }

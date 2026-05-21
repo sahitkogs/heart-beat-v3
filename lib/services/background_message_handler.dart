@@ -11,6 +11,7 @@ import '../core/hex_codec.dart';
 import '../data/app_database.dart';
 import '../data/chats_dao.dart';
 import '../data/contacts_repository.dart';
+import '../data/peer_bundle_state_dao.dart';
 import '../firebase_options.dart';
 import 'libsignal_crypto_service.dart';
 import 'notifications_service.dart';
@@ -93,13 +94,14 @@ Future<void> processFcmMessage(
     final dao = ChatsDao(db);
     await dao.ensureDirectChat(senderPubkeyHex);
 
+    final peerBundleDao = PeerBundleStateDao(db);
     final crypto = LibsignalCryptoService(db);
     await crypto.initialize();
 
     if (parsed.isBundle) {
       try {
         await crypto.processPeerPreKeyBundle(parsed.bundle!);
-        // TODO(T3.5): dao.markPeerBundleReceived(senderPubkeyHex) — via PeerBundleStateDao.
+        await peerBundleDao.markPeerBundleReceived(senderPubkeyHex);
         _log('processed peer bundle from=${_short(senderPubkeyHex)}');
       } catch (e, st) {
         _log('process bundle FAILED from=${_short(senderPubkeyHex)} '
