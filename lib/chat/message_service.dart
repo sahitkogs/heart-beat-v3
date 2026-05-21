@@ -768,8 +768,13 @@ class MessageService {
       return;
     }
 
+    if (inner is MemberAddEnvelope) {
+      await _handleMemberAdd(frame, inner);
+      return;
+    }
+
     if (inner is! TextEnvelope) {
-      // MemberAdd/Remove/Leave land in T6.3/T6.4/T6.5; for now log + drop so
+      // MemberRemove/Leave land in T6.4/T6.5; for now log + drop so
       // we don't accidentally pollute the direct-chat row.
       _log('unhandled_inner_type type=${inner.runtimeType}');
       return;
@@ -962,6 +967,130 @@ class MessageService {
     );
     _log('group_invite accepted chat=${_short(inv.chatId)} '
         'creator=${_short(inv.creator)} members=${inv.members.length}');
+  }
+
+  /// T6.3 — handle inbound `member_add` envelope on the foreground path.
+  /// Spec §6.7 + §7.8 + §7.9 verification:
+  ///   1. chat must exist locally and be `kind='group'`
+  ///   2. signer (libsignal-session sender) must equal `chats.creator_pubkey_hex`
+  ///   3. Ed25519 sig over canonical bytes verifies under the creator pubkey
+  ///   4. opSeq window:
+  ///      - `<= chat.lastOpSeq` → drop with `op_seq_stale` (no ops_log row)
+  ///      - `> chat.lastOpSeq + 1` → accept but log `op_seq_gap`
+  ///      - `== chat.lastOpSeq + 1` → normal accept
+  /// Sig-verify failures log + drop AND append `group_ops_log applied=false`.
+  /// On accept: insert the new member row, bump lastOpSeq, insert the system
+  /// message, append `group_ops_log applied=true`.
+  Future<void> _handleMemberAdd(
+    DeliverFrame frame,
+    MemberAddEnvelope inv,
+  ) async {
+    final chat = await dao.getChat(inv.chatId);
+    if (chat == null) {
+      _log('[Group] member_add_unknown_chat chat=${_short(inv.chatId)} '
+          'from=${_short(frame.fromPubkeyHex)}');
+      return;
+    }
+    if (chat.kind != 'group') {
+      _log('[Group] member_add_wrong_kind chat=${_short(inv.chatId)} '
+          'kind=${chat.kind}');
+      return;
+    }
+    // Signer must be the group creator. The libsignal-session sender
+    // (frame.fromPubkeyHex) is the cryptographic identity of who handed us
+    // this envelope; spec §6.7 says sig verifies under chats.creator_pubkey_hex,
+    // so we additionally require the session-sender to equal the creator.
+    if (frame.fromPubkeyHex != chat.creatorPubkeyHex) {
+      _log('[Group] member_add_signer_not_creator chat=${_short(inv.chatId)} '
+          'from=${_short(frame.fromPubkeyHex)} '
+          'creator=${_short(chat.creatorPubkeyHex ?? "")}');
+      return;
+    }
+
+    // Rebuild canonical bytes from the typed fields (no `sig`) and verify.
+    final canonicalBody = <String, dynamic>{
+      'v': 1, 'type': 'member_add',
+      'chatId': inv.chatId, 'lamport': inv.lamport,
+      'target': inv.target,
+      'addedAt': inv.addedAt.toUtc().toIso8601String(),
+      'opSeq': inv.opSeq,
+    };
+    final canonical = canonicalJsonBytes(canonicalBody);
+    final sigOk = await SigningService.verify(
+      publicKeyHex: chat.creatorPubkeyHex!,
+      message: canonical,
+      signature: hexToBytes(inv.sigHex),
+    );
+    if (!sigOk) {
+      _log('[Group] member_add_sig_fail chat=${_short(inv.chatId)} '
+          'target=${_short(inv.target)}');
+      await groupOpsLogDao.append(
+        id: _uuid.v4(),
+        chatId: inv.chatId,
+        opSeq: inv.opSeq,
+        kind: 'add',
+        targetPubkeyHex: inv.target,
+        signerPubkeyHex: chat.creatorPubkeyHex!,
+        signatureHex: inv.sigHex,
+        applied: false,
+      );
+      return;
+    }
+
+    // opSeq window. Spec §7.9:
+    //   <= last_op_seq           → drop with op_seq_stale (no ops_log row)
+    //   > last_op_seq + 1        → accept, but log op_seq_gap
+    //   == last_op_seq + 1       → normal accept
+    if (inv.opSeq <= chat.lastOpSeq) {
+      _log('[Group] op_seq_stale chat=${_short(inv.chatId)} '
+          'incoming=${inv.opSeq} local=${chat.lastOpSeq}');
+      return;
+    }
+    if (inv.opSeq > chat.lastOpSeq + 1) {
+      _log('[Group] op_seq_gap chat=${_short(inv.chatId)} '
+          'incoming=${inv.opSeq} local=${chat.lastOpSeq}');
+      // fall through and accept
+    }
+
+    // Accept: insert member row + bump opSeq + system message + ops log.
+    await groupMembersDao.insertMember(
+      chatId: inv.chatId,
+      memberPubkeyHex: inv.target,
+      addedByPubkeyHex: chat.creatorPubkeyHex!,
+      addedAt: inv.addedAt,
+    );
+    await dao.bumpLastOpSeq(inv.chatId, inv.opSeq);
+
+    final body = inv.target == myPubkeyHex
+        ? '${_short(chat.creatorPubkeyHex!)} added you'
+        : '${_short(chat.creatorPubkeyHex!)} added ${_short(inv.target)}';
+    final now = DateTime.now();
+    // Observe inv.lamport so subsequent text messages in this group don't
+    // accidentally get a smaller lamport than the system row.
+    final lamport = await dao.observeLamport(inv.chatId, inv.lamport);
+    await dao.insertMessage(MessagesCompanion.insert(
+      id: _uuid.v4(),
+      chatId: inv.chatId,
+      senderPubkeyHex: chat.creatorPubkeyHex!,
+      body: body,
+      lamport: lamport,
+      sentAt: inv.addedAt,
+      receivedAt: Value(now),
+      kind: const Value('member_add'),
+    ));
+    await dao.updateLastMessage(inv.chatId, body, now);
+    await groupOpsLogDao.append(
+      id: _uuid.v4(),
+      chatId: inv.chatId,
+      opSeq: inv.opSeq,
+      kind: 'add',
+      targetPubkeyHex: inv.target,
+      signerPubkeyHex: chat.creatorPubkeyHex!,
+      signatureHex: inv.sigHex,
+      applied: true,
+    );
+    _log('member_add accepted chat=${_short(inv.chatId)} '
+        'target=${_short(inv.target)} opSeq=${inv.opSeq}');
   }
 
   String _preview(String body) =>
