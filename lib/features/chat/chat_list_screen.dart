@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../chat/chat_providers.dart';
 import '../../data/app_database.dart';
 import 'chat_thread_screen.dart';
+import 'new_group_screen.dart';
 
 class ChatListScreen extends ConsumerWidget {
   const ChatListScreen({super.key});
@@ -13,6 +14,13 @@ class ChatListScreen extends ConsumerWidget {
     final chatsAsync = ref.watch(chatsStreamProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Chats')),
+      floatingActionButton: FloatingActionButton(
+        child: const Icon(Icons.group_add),
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const NewGroupScreen()),
+        ),
+      ),
       body: chatsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
@@ -39,12 +47,74 @@ class ChatListScreen extends ConsumerWidget {
   }
 }
 
-class _ChatTile extends StatelessWidget {
+class _ChatTile extends ConsumerWidget {
   const _ChatTile({required this.chat});
   final Chat chat;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (chat.kind == 'group') {
+      return _buildGroupTile(context, ref);
+    }
+    return _buildDirectTile(context);
+  }
+
+  Widget _buildGroupTile(BuildContext context, WidgetRef ref) {
+    final name = chat.groupName ?? '(unnamed group)';
+    final initial = name.substring(0, 1).toUpperCase();
+    final preview = chat.lastMessagePreview ?? 'No messages yet';
+    final timestamp = chat.lastMessageAt != null
+        ? _formatTimestamp(chat.lastMessageAt!)
+        : '';
+    final isLeft = chat.leftAt != null;
+
+    return ListTile(
+      leading: CircleAvatar(child: Text(initial)),
+      title: Text(
+        name,
+        style: isLeft
+            ? const TextStyle(color: Colors.grey)
+            : null,
+      ),
+      subtitle: Text(
+        preview,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: isLeft ? const TextStyle(color: Colors.grey) : null,
+      ),
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(timestamp, style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 2),
+          if (isLeft)
+            const Text(
+              'Left',
+              style: TextStyle(fontSize: 11, color: Colors.grey),
+            )
+          else
+            FutureBuilder<int>(
+              future: ref
+                  .read(groupMembersDaoProvider)
+                  .activeMembers(chat.chatId)
+                  .then((l) => l.length),
+              builder: (_, snap) => Text(
+                '${snap.data ?? 0}',
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+            ),
+        ],
+      ),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ChatThreadScreen(peerPubkeyHex: chat.chatId),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDirectTile(BuildContext context) {
     final pk = chat.chatId;
     final title = '${pk.substring(0, 8)}…${pk.substring(pk.length - 8)}';
     final subtitle = chat.lastMessagePreview ?? 'No messages yet';
