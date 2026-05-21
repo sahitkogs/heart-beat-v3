@@ -78,8 +78,10 @@ class MessageService {
     // Compute lamport once; use it for both the persisted row and the
     // JSON inner envelope so they stay in sync.
     final lamport = await dao.bumpLamport(peerPubkeyHex);
+    // chatId in the inner envelope is OUR pubkey (the sender's key), so that
+    // the receiver's spoof guard (inner.chatId == frame.fromPubkeyHex) passes.
     final jsonBytes = InnerEnvelope.buildText(
-      chatId: peerPubkeyHex,
+      chatId: myPubkeyHex,
       lamport: lamport,
       body: body,
     );

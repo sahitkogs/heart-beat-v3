@@ -238,7 +238,9 @@ void main() {
     final inner = InnerEnvelope.parse(innerBytes);
     expect(inner, isA<TextEnvelope>());
     expect((inner as TextEnvelope).body, 'queued');
-    expect(inner.chatId, peerPub);
+    // chatId is the sender's own pubkey (myPub) so the receiver's
+    // spoof guard (chatId == fromPubkeyHex) passes.
+    expect(inner.chatId, myPub);
   });
 
   test('second sendText after bundle is already established sends immediately',
@@ -523,6 +525,83 @@ void main() {
       await drainMicrotasks();
 
       expect(wake.calls, isEmpty);
+    });
+  });
+
+  group('JSON inner envelope round-trip on 1:1 (T4.3)', () {
+    /// Bootstrap: emit peer's PreKey bundle so sendText encrypts immediately.
+    Future<void> bootstrap() async {
+      relay.emit(DeliverFrame(
+        fromPubkeyHex: peerPub,
+        envelope: EnvelopeWire.wrapPreKeyBundle(peerBundle()),
+      ));
+      await drainMicrotasks();
+    }
+
+    test('A sends hello — wire carries correct JSON inner envelope', () async {
+      await bootstrap();
+
+      // A sends 'hello'. FakeCrypto echoes plaintext with 0xCC prefix.
+      await service.sendText(peerPubkeyHex: peerPub, body: 'hello');
+
+      final msgFrame = relay.sent
+          .lastWhere((f) => f.envelope.first == EnvelopeTag.message);
+      final parsedEnv = EnvelopeWire.parse(msgFrame.envelope);
+      // Strip 0xCC prefix added by FakeCrypto.
+      final innerBytes = parsedEnv.ciphertext!.sublist(1);
+      final inner = InnerEnvelope.parse(innerBytes);
+      expect(inner, isA<TextEnvelope>());
+      final textInner = inner as TextEnvelope;
+      expect(textInner.body, 'hello');
+      // chatId is sender's own pubkey so receiver spoof guard passes.
+      expect(textInner.chatId, myPub);
+      expect(textInner.lamport, greaterThan(0));
+
+      // The outbound DB row should have the raw body (display-friendly).
+      final msgs = await dao.watchMessages(peerPub).first;
+      expect(msgs.any((m) => m.body == 'hello' && m.senderPubkeyHex == myPub),
+          isTrue);
+    });
+
+    test('B sends hi — A parses JSON and persists correct body and sender',
+        () async {
+      // B sends 'hi' to A. chatId = peerPub (B's own sender key) so that
+      // A's spoof guard (inner.chatId == frame.fromPubkeyHex == peerPub) passes.
+      final innerBytes = InnerEnvelope.buildText(
+        chatId: peerPub, // sender's (B's) own pubkey
+        lamport: 1,
+        body: 'hi',
+      );
+      final ciphertext = [0xCC, ...innerBytes];
+      final envelope = EnvelopeWire.wrapMessage(ciphertext);
+
+      relay.emit(DeliverFrame(fromPubkeyHex: peerPub, envelope: envelope));
+      await drainMicrotasks();
+
+      final msgs = await dao.watchMessages(peerPub).first;
+      expect(msgs.length, 1);
+      expect(msgs.first.body, 'hi');
+      expect(msgs.first.senderPubkeyHex, peerPub);
+    });
+
+    test('spoof guard: drops message with mismatched chatId', () async {
+      // Attacker sends a message claiming chatId = some third party.
+      final thirdParty = 'cc' * 32;
+      final innerBytes = InnerEnvelope.buildText(
+        chatId: thirdParty, // wrong — should be peerPub (the sender)
+        lamport: 1,
+        body: 'spoofed',
+      );
+      final ciphertext = [0xCC, ...innerBytes];
+      final envelope = EnvelopeWire.wrapMessage(ciphertext);
+
+      relay.emit(DeliverFrame(fromPubkeyHex: peerPub, envelope: envelope));
+      await drainMicrotasks();
+
+      // Should be silently dropped — no row in DB.
+      final msgs = await dao.watchMessages(peerPub).first;
+      expect(msgs.where((m) => m.body == 'spoofed'), isEmpty,
+          reason: 'spoof guard must drop messages with mismatched chatId');
     });
   });
 
