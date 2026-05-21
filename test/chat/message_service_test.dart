@@ -169,6 +169,43 @@ class _FakeCrypto implements CryptoService {
   }
 }
 
+/// A [CryptoService] wrapper that delegates all calls to [_inner] except
+/// [encrypt], where it throws [StateError] for the specified [failPeer].
+/// Used by T5.2 to verify that per-peer failures don't abort the fan-out.
+class _FailCryptoForPeer implements CryptoService {
+  _FailCryptoForPeer(this._inner, {required this.failPeer});
+  final _FakeCrypto _inner;
+  final String failPeer;
+
+  @override
+  Future<void> initialize() => _inner.initialize();
+
+  @override
+  Future<CryptoPreKeyBundle> myPreKeyBundle() => _inner.myPreKeyBundle();
+
+  @override
+  Future<void> processPeerPreKeyBundle(CryptoPreKeyBundle bundle) =>
+      _inner.processPeerPreKeyBundle(bundle);
+
+  @override
+  Future<List<int>> encrypt({
+    required String peerPubkeyHex,
+    required List<int> plaintext,
+  }) {
+    if (peerPubkeyHex == failPeer) {
+      throw StateError('_FailCryptoForPeer: forced failure for $failPeer');
+    }
+    return _inner.encrypt(peerPubkeyHex: peerPubkeyHex, plaintext: plaintext);
+  }
+
+  @override
+  Future<List<int>> decrypt({
+    required String peerPubkeyHex,
+    required List<int> ciphertext,
+  }) =>
+      _inner.decrypt(peerPubkeyHex: peerPubkeyHex, ciphertext: ciphertext);
+}
+
 void main() {
   // The restart test opens two AppDatabase instances over the same file —
   // suppress drift's "multiple databases" warning so real failures stay
@@ -789,6 +826,176 @@ void main() {
       );
       expect(ok, isTrue,
           reason: 'group_invite sig must verify against creator public key');
+    });
+  });
+
+  group('sendGroupText (T5.2)', () {
+    final peerB = 'bb' * 32;
+    final peerC = 'cc' * 32;
+
+    /// Creates a group with members {self, B, C} and marks both peers'
+    /// bundles as received. Returns the chatId.
+    Future<String> setUpGroup() async {
+      await peerBundleDao.markPeerBundleReceived(peerB);
+      await peerBundleDao.markPeerBundleReceived(peerC);
+      return service.createGroup(
+        name: 'TestGroup',
+        memberPubkeysHex: [peerB, peerC],
+      );
+    }
+
+    test('3-member group fans out 2 copies; both peers receive identical envelope bytes',
+        () async {
+      final gid = await setUpGroup();
+      final sentBefore = relay.sent.length;
+
+      await service.sendGroupText(chatId: gid, body: 'hello');
+
+      final newFrames = relay.sent.skip(sentBefore).toList();
+      final msgFrames = newFrames
+          .where((f) => f.envelope.first == EnvelopeTag.message)
+          .toList();
+      expect(msgFrames.length, 2,
+          reason: 'should fan out exactly 2 message envelopes (one per peer)');
+
+      final destinations = msgFrames.map((f) => f.to).toSet();
+      expect(destinations, {peerB, peerC});
+
+      // Both copies should carry identical inner-envelope bytes with the
+      // correct chatId, body, and lamport.
+      int? sharedLamport;
+      for (final frame in msgFrames) {
+        final parsedEnv = EnvelopeWire.parse(frame.envelope);
+        // FakeCrypto prepends 0xCC; strip it to get plaintext inner bytes.
+        final innerBytes = parsedEnv.ciphertext!.sublist(1);
+        final inner = InnerEnvelope.parse(innerBytes);
+        expect(inner, isA<TextEnvelope>());
+        final text = inner as TextEnvelope;
+        expect(text.body, 'hello');
+        expect(text.chatId, gid);
+        sharedLamport ??= text.lamport;
+        expect(text.lamport, sharedLamport,
+            reason: 'both copies must carry the same lamport');
+      }
+    });
+
+    test('per-peer encryption failure does not abort the rest of the fan-out',
+        () async {
+      // Create a crypto wrapper that throws for peerC but succeeds for peerB.
+      final failingCrypto = _FailCryptoForPeer(crypto, failPeer: peerC);
+      await service.dispose();
+      service = MessageService(
+        crypto: failingCrypto,
+        relay: relay,
+        dao: dao,
+        peerBundleDao: peerBundleDao,
+        myPubkeyHex: myPub,
+        groupMembersDao: groupMembersDao,
+        groupOpsLogDao: groupOpsLogDao,
+        signing: signing,
+      );
+
+      final gid = await setUpGroup();
+      final sentBefore = relay.sent.length;
+
+      // Should not throw despite peerC failing.
+      await service.sendGroupText(chatId: gid, body: 'partial');
+
+      final newFrames = relay.sent.skip(sentBefore).toList();
+      final msgFrames = newFrames
+          .where((f) => f.envelope.first == EnvelopeTag.message)
+          .toList();
+
+      // peerB should have received 1 message envelope; peerC none.
+      final bFrames = msgFrames.where((f) => f.to == peerB).toList();
+      final cFrames = msgFrames.where((f) => f.to == peerC).toList();
+      expect(bFrames, hasLength(1),
+          reason: 'peerB should still receive the envelope');
+      expect(cFrames, isEmpty,
+          reason: 'peerC should not have received (encrypt threw)');
+
+      // Local row must be persisted regardless.
+      final msgs = await dao.watchMessages(gid).first;
+      expect(msgs.any((m) => m.body == 'partial' && m.senderPubkeyHex == myPub),
+          isTrue,
+          reason: "sender's local row must persist even when fan-out partially fails");
+    });
+
+    test('peer without bundle yet queues envelope and still persists the local row',
+        () async {
+      // peerB has its bundle; peerC does NOT.
+      await peerBundleDao.markPeerBundleReceived(peerB);
+      // Do NOT mark peerC.
+      final gid = await service.createGroup(
+        name: 'QueueTest',
+        memberPubkeysHex: [peerB, peerC],
+      );
+      final sentBefore = relay.sent.length;
+
+      await service.sendGroupText(chatId: gid, body: 'queued-msg');
+
+      final newFrames = relay.sent.skip(sentBefore).toList();
+      final msgFrames = newFrames
+          .where((f) => f.envelope.first == EnvelopeTag.message)
+          .toList();
+
+      // peerB should have received a message; peerC should not.
+      final cFrames = msgFrames.where((f) => f.to == peerC).toList();
+      expect(cFrames, isEmpty,
+          reason: 'peerC envelope must be queued, not sent');
+      final bFrames = msgFrames.where((f) => f.to == peerB).toList();
+      expect(bFrames, hasLength(1),
+          reason: 'peerB should receive the envelope immediately');
+
+      // Local row still persisted.
+      final msgs = await dao.watchMessages(gid).first;
+      expect(msgs.any((m) => m.body == 'queued-msg' && m.senderPubkeyHex == myPub),
+          isTrue,
+          reason: "sender's row must be persisted before the fan-out");
+
+      // Now simulate peerC's bundle arriving — the queued envelope should drain.
+      relay.emit(DeliverFrame(
+        fromPubkeyHex: peerC,
+        envelope: EnvelopeWire.wrapPreKeyBundle(
+          const CryptoPreKeyBundle(
+            ownerPubkeyHex: '',
+            registrationId: 55,
+            deviceId: 1,
+            preKeyId: 5,
+            preKeyPublicHex: '01',
+            signedPreKeyId: 6,
+            signedPreKeyPublicHex: '02',
+            signedPreKeySignatureHex: '03',
+            identityKeyPublicHex: '04',
+          ).copyWithOwner(peerC),
+        ),
+      ));
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      // After drain, peerC should now have received the envelope.
+      final cFramesAfter = relay.sent
+          .where((f) =>
+              f.envelope.first == EnvelopeTag.message && f.to == peerC)
+          .toList();
+      expect(cFramesAfter, isNotEmpty,
+          reason: 'queued envelope must drain when peerC bundle arrives');
+    });
+
+    test('throws StateError if chat does not exist', () async {
+      expect(
+        () => service.sendGroupText(chatId: 'nonexistent', body: 'x'),
+        throwsStateError,
+      );
+    });
+
+    test('throws StateError if chat.leftAt is set', () async {
+      final gid = await setUpGroup();
+      await dao.setLeftAt(gid, DateTime.now());
+      expect(
+        () => service.sendGroupText(chatId: gid, body: 'after-leave'),
+        throwsStateError,
+      );
     });
   });
 

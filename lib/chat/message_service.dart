@@ -200,6 +200,67 @@ class MessageService {
     return chatId;
   }
 
+  /// Send a text message to a group. Loads active members, bumps lamport,
+  /// persists the local row, then fans out the JSON `text` envelope to each
+  /// non-self active member. Per-peer encrypt/send failures are logged but
+  /// don't abort the rest of the fan-out (matches 10.3 single-peer behavior).
+  ///
+  /// Throws StateError if the chat doesn't exist, isn't a group, or has already
+  /// been left.
+  Future<void> sendGroupText({
+    required String chatId,
+    required String body,
+  }) async {
+    final chat = await dao.getChat(chatId);
+    if (chat == null) {
+      throw StateError('sendGroupText: unknown chat $chatId');
+    }
+    if (chat.kind != 'group') {
+      throw StateError('sendGroupText: not a group chat $chatId');
+    }
+    if (chat.leftAt != null) {
+      throw StateError('sendGroupText: already left $chatId');
+    }
+
+    final active = await groupMembersDao.activeMembers(chatId);
+    final recipients = active
+        .where((m) => m.memberPubkeyHex != myPubkeyHex)
+        .map((m) => m.memberPubkeyHex)
+        .toList();
+
+    final lamport = await dao.bumpLamport(chatId);
+    final now = DateTime.now();
+
+    // Persist locally before fan-out so the sender's UI updates immediately
+    // even if every per-peer send subsequently fails.
+    await dao.insertMessage(MessagesCompanion.insert(
+      id: _uuid.v4(),
+      chatId: chatId,
+      senderPubkeyHex: myPubkeyHex,
+      body: body,
+      lamport: lamport,
+      sentAt: now,
+      kind: const Value('text'),
+    ));
+    await dao.updateLastMessage(chatId, _preview(body), now);
+
+    final jsonBytes = InnerEnvelope.buildText(
+      chatId: chatId, lamport: lamport, body: body,
+    );
+
+    _log('sendGroupText chatId=${_short(chatId)} recipients=${recipients.length} '
+        'lamport=$lamport bodyLen=${body.length}');
+
+    for (final peer in recipients) {
+      try {
+        await _maybeSendOwnBundle(peer);
+        await _sendOrQueueGroupBytes(peer, jsonBytes);
+      } catch (e, st) {
+        _log('sendGroupText per-peer FAIL peer=${_short(peer)} err=$e\n$st');
+      }
+    }
+  }
+
   String _randomChatId() {
     final rand = Random.secure();
     final bytes = List<int>.generate(16, (_) => rand.nextInt(256));
