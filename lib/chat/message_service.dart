@@ -778,9 +778,14 @@ class MessageService {
       return;
     }
 
+    if (inner is MemberLeaveEnvelope) {
+      await _handleMemberLeave(frame, inner);
+      return;
+    }
+
     if (inner is! TextEnvelope) {
-      // MemberLeave lands in T6.5; for now log + drop so we don't accidentally
-      // pollute the direct-chat row.
+      // Defense-in-depth — all 5 envelope kinds are handled above, so this
+      // branch should be unreachable. Log + drop if a new kind appears.
       _log('unhandled_inner_type type=${inner.runtimeType}');
       return;
     }
@@ -1228,6 +1233,112 @@ class MessageService {
     );
     _log('member_remove accepted chat=${_short(inv.chatId)} '
         'target=${_short(inv.target)} opSeq=${inv.opSeq}');
+  }
+
+  /// T6.5 — handle inbound `member_leave` envelope on the foreground path.
+  /// Spec §6.5 + §6.7 + §7.8 + §7.9 verification:
+  ///   1. chat must exist locally and be `kind='group'`
+  ///   2. the signer (libsignal-session sender) must currently be an active
+  ///      member of this group — the leaver IS the signer
+  ///   3. Ed25519 sig over canonical bytes verifies under the SIGNER'S pubkey
+  ///      (not the creator's — leave is signed by the leaver)
+  /// Leave is lamport-ordered, NOT opSeq-ordered. No opSeq window check, no
+  /// `lastOpSeq` bump. The `group_ops_log` row uses `opSeq: null` and
+  /// `targetPubkeyHex: null` (signer == leaver, no separate target field).
+  ///
+  /// Sig-verify failures log + drop AND append `group_ops_log applied=false`.
+  /// Idempotency: a duplicate leave re-delivery is dropped by the "currently
+  /// active member" check (we marked the signer inactive on first delivery).
+  Future<void> _handleMemberLeave(
+    DeliverFrame frame,
+    MemberLeaveEnvelope inv,
+  ) async {
+    final chat = await dao.getChat(inv.chatId);
+    if (chat == null) {
+      _log('[Group] member_leave_unknown_chat chat=${_short(inv.chatId)} '
+          'from=${_short(frame.fromPubkeyHex)}');
+      return;
+    }
+    if (chat.kind != 'group') {
+      _log('[Group] member_leave_wrong_kind chat=${_short(inv.chatId)} '
+          'kind=${chat.kind}');
+      return;
+    }
+    // Spec §6.7: the leaver must currently be an active member. This also
+    // gives us idempotency for free — a replayed leave finds the signer
+    // already inactive and is dropped here.
+    final isActive = await groupMembersDao.isActiveMember(
+        inv.chatId, frame.fromPubkeyHex);
+    if (!isActive) {
+      _log('[Group] member_leave_not_active chat=${_short(inv.chatId)} '
+          'signer=${_short(frame.fromPubkeyHex)}');
+      return;
+    }
+
+    // Rebuild canonical bytes from the typed fields (no `sig`) and verify
+    // under the SIGNER's pubkey — for member_leave the signer signs under
+    // their OWN identity, not the creator's.
+    final canonicalBody = <String, dynamic>{
+      'v': 1, 'type': 'member_leave',
+      'chatId': inv.chatId, 'lamport': inv.lamport,
+      'leftAt': inv.leftAt.toUtc().toIso8601String(),
+    };
+    final canonical = canonicalJsonBytes(canonicalBody);
+    final sigOk = await SigningService.verify(
+      publicKeyHex: frame.fromPubkeyHex,
+      message: canonical,
+      signature: hexToBytes(inv.sigHex),
+    );
+    if (!sigOk) {
+      _log('[Group] member_leave_sig_fail chat=${_short(inv.chatId)} '
+          'signer=${_short(frame.fromPubkeyHex)}');
+      await groupOpsLogDao.append(
+        id: _uuid.v4(),
+        chatId: inv.chatId,
+        opSeq: null,
+        kind: 'leave',
+        targetPubkeyHex: null,
+        signerPubkeyHex: frame.fromPubkeyHex,
+        signatureHex: inv.sigHex,
+        applied: false,
+      );
+      return;
+    }
+
+    // Accept: mark the signer removed, insert system message, append ops_log.
+    // No lastOpSeq bump (leave has no opSeq).
+    final now = DateTime.now();
+    await groupMembersDao.markRemoved(
+      chatId: inv.chatId,
+      memberPubkeyHex: frame.fromPubkeyHex,
+      removedAt: inv.leftAt,
+    );
+
+    final body = '${_short(frame.fromPubkeyHex)} left';
+    final lamport = await dao.observeLamport(inv.chatId, inv.lamport);
+    await dao.insertMessage(MessagesCompanion.insert(
+      id: _uuid.v4(),
+      chatId: inv.chatId,
+      senderPubkeyHex: frame.fromPubkeyHex,
+      body: body,
+      lamport: lamport,
+      sentAt: inv.leftAt,
+      receivedAt: Value(now),
+      kind: const Value('member_leave'),
+    ));
+    await dao.updateLastMessage(inv.chatId, body, now);
+    await groupOpsLogDao.append(
+      id: _uuid.v4(),
+      chatId: inv.chatId,
+      opSeq: null,
+      kind: 'leave',
+      targetPubkeyHex: null,
+      signerPubkeyHex: frame.fromPubkeyHex,
+      signatureHex: inv.sigHex,
+      applied: true,
+    );
+    _log('member_leave accepted chat=${_short(inv.chatId)} '
+        'signer=${_short(frame.fromPubkeyHex)}');
   }
 
   String _preview(String body) =>

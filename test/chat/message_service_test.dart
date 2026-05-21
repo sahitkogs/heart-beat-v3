@@ -2583,6 +2583,275 @@ void main() {
     });
   });
 
+  group('handle inbound member_leave (T6.5)', () {
+    /// Seed a group chat where `creator` is the group creator, self ([myPub])
+    /// is a pre-seeded member, and [leaverPub] (if provided) is also a
+    /// pre-seeded active member. Returns both the creator's pubkey and
+    /// (optionally) the leaver's pubkey so tests can synthesize signed
+    /// leave envelopes from the leaver.
+    Future<({String chatId, String creator})> setupReceivedGroup({
+      required int initialOpSeq,
+      bool seedSelfAsMember = true,
+      String? leaverPub,
+    }) async {
+      final creatorSigning = await makeSigningService();
+      final creator = await creatorSigning.publicKeyHex();
+      await contactsRepo.add(contact_model.Contact(
+        pubkeyHex: creator,
+        addedAt: DateTime.now(),
+      ));
+      final chatId = '33' * 16; // synthetic, distinct from T6.4
+      final createdAt = DateTime.utc(2026, 5, 21);
+      await dao.insertGroupChat(
+        chatId: chatId,
+        groupName: 'TestG',
+        creatorPubkeyHex: creator,
+        createdAt: createdAt,
+        initialOpSeq: initialOpSeq,
+      );
+      await groupMembersDao.insertMember(
+        chatId: chatId,
+        memberPubkeyHex: creator,
+        addedByPubkeyHex: creator,
+        addedAt: createdAt,
+      );
+      if (seedSelfAsMember) {
+        await groupMembersDao.insertMember(
+          chatId: chatId,
+          memberPubkeyHex: myPub,
+          addedByPubkeyHex: creator,
+          addedAt: createdAt,
+        );
+      }
+      if (leaverPub != null) {
+        await groupMembersDao.insertMember(
+          chatId: chatId,
+          memberPubkeyHex: leaverPub,
+          addedByPubkeyHex: creator,
+          addedAt: createdAt,
+        );
+      }
+      return (chatId: chatId, creator: creator);
+    }
+
+    /// Build a libsignal-decrypted-and-then-pseudo-encrypted member_leave
+    /// envelope, signed under [leaverSigning] (the leaver IS the signer).
+    /// FakeCrypto's `decrypt` strips a leading 0xCC so the receiver gets the
+    /// raw JSON inner bytes.
+    Future<List<int>> buildSignedMemberLeaveEnvelope({
+      required SigningService leaverSigning,
+      required String chatId,
+      required DateTime leftAt,
+      int lamport = 1,
+      bool tamperSig = false,
+    }) async {
+      final canonicalBody = <String, dynamic>{
+        'v': 1, 'type': 'member_leave',
+        'chatId': chatId, 'lamport': lamport,
+        'leftAt': leftAt.toUtc().toIso8601String(),
+      };
+      final canonical = canonicalJsonBytes(canonicalBody);
+      final sigBytes = await leaverSigning.sign(canonical);
+      var sigHex = bytesToHex(sigBytes);
+      if (tamperSig) {
+        final mutable = List<int>.from(sigBytes);
+        mutable[0] = mutable[0] ^ 0xFF;
+        sigHex = bytesToHex(mutable);
+      }
+      final inner = InnerEnvelope.buildMemberLeave(
+        chatId: chatId,
+        lamport: lamport,
+        leftAt: leftAt,
+        sigHex: sigHex,
+      );
+      final ciphertext = [0xCC, ...inner];
+      return EnvelopeWire.wrapMessage(ciphertext);
+    }
+
+    test('happy path: third party leaves → member removed, lastOpSeq UNCHANGED, '
+        'system row + ops_log applied=true with opSeq=null', () async {
+      final leaverSigning = await makeSigningService();
+      final peerC = await leaverSigning.publicKeyHex();
+      final g = await setupReceivedGroup(
+        initialOpSeq: 1,
+        leaverPub: peerC,
+      );
+      final leftAt = DateTime.utc(2026, 5, 21, 12);
+      final envelope = await buildSignedMemberLeaveEnvelope(
+        leaverSigning: leaverSigning,
+        chatId: g.chatId,
+        leftAt: leftAt,
+        lamport: 5,
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: peerC, envelope: envelope));
+      await drainMicrotasks();
+
+      // peerC no longer active.
+      expect(await groupMembersDao.isActiveMember(g.chatId, peerC), isFalse);
+
+      // lastOpSeq UNCHANGED — leave does not bump opSeq.
+      final chat = await dao.getChat(g.chatId);
+      expect(chat!.lastOpSeq, 1);
+
+      // System message present with truncated leaver + " left", kind=member_leave.
+      final msgs = await dao.watchMessages(g.chatId).first;
+      final sys = msgs.where((m) => m.kind == 'member_leave').toList();
+      expect(sys, hasLength(1));
+      expect(sys.first.senderPubkeyHex, peerC);
+      expect(sys.first.body, '${_shortPub(peerC)} left');
+
+      // ops_log applied=true with kind='leave', opSeq=null, targetPubkeyHex=null,
+      // signerPubkeyHex=peerC.
+      final ops = await groupOpsLogDao.forChat(g.chatId);
+      final leaveOps = ops.where((o) => o.kind == 'leave').toList();
+      expect(leaveOps, hasLength(1));
+      expect(leaveOps.first.applied, isTrue);
+      expect(leaveOps.first.opSeq, isNull);
+      expect(leaveOps.first.targetPubkeyHex, isNull);
+      expect(leaveOps.first.signerPubkeyHex, peerC);
+    });
+
+    test('sig fail → dropped; ops_log applied=false; signer still active',
+        () async {
+      final leaverSigning = await makeSigningService();
+      final peerC = await leaverSigning.publicKeyHex();
+      final g = await setupReceivedGroup(
+        initialOpSeq: 1,
+        leaverPub: peerC,
+      );
+      final envelope = await buildSignedMemberLeaveEnvelope(
+        leaverSigning: leaverSigning,
+        chatId: g.chatId,
+        leftAt: DateTime.utc(2026, 5, 21, 12),
+        tamperSig: true,
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: peerC, envelope: envelope));
+      await drainMicrotasks();
+
+      // Signer still active; no system message inserted.
+      expect(await groupMembersDao.isActiveMember(g.chatId, peerC), isTrue);
+      final msgs = await dao.watchMessages(g.chatId).first;
+      expect(msgs.where((m) => m.kind == 'member_leave'), isEmpty);
+
+      // lastOpSeq unchanged.
+      final chat = await dao.getChat(g.chatId);
+      expect(chat!.lastOpSeq, 1);
+
+      // ops_log applied=false.
+      final ops = await groupOpsLogDao.forChat(g.chatId);
+      final leaveOps = ops.where((o) => o.kind == 'leave').toList();
+      expect(leaveOps, hasLength(1));
+      expect(leaveOps.first.applied, isFalse);
+      expect(leaveOps.first.opSeq, isNull);
+      expect(leaveOps.first.targetPubkeyHex, isNull);
+      expect(leaveOps.first.signerPubkeyHex, peerC);
+    });
+
+    test('signer is not currently an active member → dropped; '
+        'no ops_log row; no state change', () async {
+      // Pre-seed group {creator, myPub} only. peerC was NEVER in the group.
+      final g = await setupReceivedGroup(initialOpSeq: 1);
+      final leaverSigning = await makeSigningService();
+      final peerC = await leaverSigning.publicKeyHex();
+      final envelope = await buildSignedMemberLeaveEnvelope(
+        leaverSigning: leaverSigning,
+        chatId: g.chatId,
+        leftAt: DateTime.utc(2026, 5, 21, 12),
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: peerC, envelope: envelope));
+      await drainMicrotasks();
+
+      // No member row for peerC.
+      final all = await groupMembersDao.allMembers(g.chatId);
+      expect(all.map((m) => m.memberPubkeyHex), isNot(contains(peerC)));
+
+      // No system message, no ops_log row, no opSeq change.
+      final msgs = await dao.watchMessages(g.chatId).first;
+      expect(msgs.where((m) => m.kind == 'member_leave'), isEmpty);
+      final ops = await groupOpsLogDao.forChat(g.chatId);
+      expect(ops.where((o) => o.kind == 'leave'), isEmpty);
+      final chat = await dao.getChat(g.chatId);
+      expect(chat!.lastOpSeq, 1);
+    });
+
+    test('idempotent double-leave: second delivery is dropped (signer no longer '
+        'active); only one applied=true ops_log row exists', () async {
+      final leaverSigning = await makeSigningService();
+      final peerC = await leaverSigning.publicKeyHex();
+      final g = await setupReceivedGroup(
+        initialOpSeq: 1,
+        leaverPub: peerC,
+      );
+      final leftAt = DateTime.utc(2026, 5, 21, 12);
+      final envelope = await buildSignedMemberLeaveEnvelope(
+        leaverSigning: leaverSigning,
+        chatId: g.chatId,
+        leftAt: leftAt,
+      );
+      // First delivery.
+      relay.emit(DeliverFrame(fromPubkeyHex: peerC, envelope: envelope));
+      await drainMicrotasks();
+      // Second delivery (same envelope).
+      relay.emit(DeliverFrame(fromPubkeyHex: peerC, envelope: envelope));
+      await drainMicrotasks();
+
+      // peerC inactive.
+      expect(await groupMembersDao.isActiveMember(g.chatId, peerC), isFalse);
+
+      // Exactly one applied=true ops_log row for kind='leave'.
+      final ops = await groupOpsLogDao.forChat(g.chatId);
+      final leaveOps = ops.where((o) => o.kind == 'leave').toList();
+      expect(leaveOps, hasLength(1));
+      expect(leaveOps.first.applied, isTrue);
+
+      // Exactly one system message.
+      final msgs = await dao.watchMessages(g.chatId).first;
+      expect(msgs.where((m) => m.kind == 'member_leave'), hasLength(1));
+    });
+
+    test('unknown chat → dropped (no ops_log row)', () async {
+      final leaverSigning = await makeSigningService();
+      final peerC = await leaverSigning.publicKeyHex();
+      final unknownChatId = '44' * 16;
+      final envelope = await buildSignedMemberLeaveEnvelope(
+        leaverSigning: leaverSigning,
+        chatId: unknownChatId,
+        leftAt: DateTime.utc(2026, 5, 21, 12),
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: peerC, envelope: envelope));
+      await drainMicrotasks();
+
+      expect(await dao.getChat(unknownChatId), isNull);
+      final ops = await groupOpsLogDao.forChat(unknownChatId);
+      expect(ops, isEmpty);
+    });
+
+    test('lamport advances on accepted leave (participates in ordering)',
+        () async {
+      final leaverSigning = await makeSigningService();
+      final peerC = await leaverSigning.publicKeyHex();
+      final g = await setupReceivedGroup(
+        initialOpSeq: 1,
+        leaverPub: peerC,
+      );
+      final envelope = await buildSignedMemberLeaveEnvelope(
+        leaverSigning: leaverSigning,
+        chatId: g.chatId,
+        leftAt: DateTime.utc(2026, 5, 21, 12),
+        lamport: 5,
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: peerC, envelope: envelope));
+      await drainMicrotasks();
+
+      // After observing inv.lamport=5, the inserted message's lamport
+      // should be 5 (observe semantics: max(local, incoming)).
+      final msgs = await dao.watchMessages(g.chatId).first;
+      final sys = msgs.where((m) => m.kind == 'member_leave').toList();
+      expect(sys, hasLength(1));
+      expect(sys.first.lamport, 5);
+    });
+  });
+
   group('bundle-exchange state persists across restart (T3.4)', () {
     late Directory tempDir;
     late File dbFile;
