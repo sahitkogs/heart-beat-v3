@@ -1165,6 +1165,202 @@ void main() {
     });
   });
 
+  group('removeMemberFromGroup (T5.4)', () {
+    final peerB = 'bb' * 32;
+    final peerC = 'cc' * 32;
+    final peerD = 'dd' * 32;
+
+    /// Creates a {self=myPub, B, C} group with bundles pre-marked for B and C.
+    Future<String> setUpGroup() async {
+      await peerBundleDao.markPeerBundleReceived(peerB);
+      await peerBundleDao.markPeerBundleReceived(peerC);
+      return service.createGroup(
+        name: 'TestGroup',
+        memberPubkeysHex: [peerB, peerC],
+      );
+    }
+
+    test('3-member group; creator removes C; fan-out is correct (incl. target)',
+        () async {
+      final gid = await setUpGroup();
+      final chatBefore = await dao.getChat(gid);
+      final oldOpSeq = chatBefore!.lastOpSeq;
+
+      final sentBefore = relay.sent.length;
+      await service.removeMemberFromGroup(
+          chatId: gid, targetPubkeyHex: peerC);
+
+      // Collect only the NEW message frames produced by removeMemberFromGroup.
+      final newMsgFrames = relay.sent
+          .skip(sentBefore)
+          .where((f) => f.envelope.first == EnvelopeTag.message)
+          .toList();
+
+      // Expect exactly 2: member_remove to B AND to C (the target).
+      expect(newMsgFrames.length, 2,
+          reason: 'should fan out member_remove to every member except self, '
+              'including the target');
+
+      final toB = newMsgFrames.where((f) => f.to == peerB).toList();
+      final toC = newMsgFrames.where((f) => f.to == peerC).toList();
+
+      expect(toB, hasLength(1), reason: 'B should receive member_remove');
+      expect(toC, hasLength(1),
+          reason: 'target C should also receive member_remove so its UI locks');
+
+      // Decode both inner envelopes — they should be MemberRemoveEnvelope with
+      // target == peerC and opSeq == oldOpSeq + 1.
+      final bInner = InnerEnvelope.parse(
+          EnvelopeWire.parse(toB.first.envelope).ciphertext!.sublist(1));
+      expect(bInner, isA<MemberRemoveEnvelope>());
+      expect((bInner as MemberRemoveEnvelope).target, peerC);
+      expect(bInner.opSeq, oldOpSeq + 1);
+
+      final cInner = InnerEnvelope.parse(
+          EnvelopeWire.parse(toC.first.envelope).ciphertext!.sublist(1));
+      expect(cInner, isA<MemberRemoveEnvelope>());
+      expect((cInner as MemberRemoveEnvelope).target, peerC);
+      expect(cInner.opSeq, oldOpSeq + 1);
+    });
+
+    test('removeMemberFromGroup persists local state correctly', () async {
+      final gid = await setUpGroup();
+      final chatBefore = await dao.getChat(gid);
+      final oldOpSeq = chatBefore!.lastOpSeq;
+
+      await service.removeMemberFromGroup(
+          chatId: gid, targetPubkeyHex: peerC);
+
+      // C is no longer an active member.
+      final active = await groupMembersDao.activeMembers(gid);
+      final activeKeys = active.map((m) => m.memberPubkeyHex).toSet();
+      expect(activeKeys, isNot(contains(peerC)));
+
+      // C's row exists with removedAt non-null.
+      final all = await groupMembersDao.allMembers(gid);
+      final cRow = all.firstWhere((m) => m.memberPubkeyHex == peerC);
+      expect(cRow.removedAt, isNotNull);
+
+      // lastOpSeq bumped by 1.
+      final chatAfter = await dao.getChat(gid);
+      expect(chatAfter!.lastOpSeq, oldOpSeq + 1);
+
+      // A member_remove system message was inserted.
+      final msgs = await dao.watchMessages(gid).first;
+      final removeMsg = msgs.where((m) => m.kind == 'member_remove').toList();
+      expect(removeMsg, hasLength(1));
+      expect(removeMsg.first.senderPubkeyHex, myPub);
+      expect(removeMsg.first.body, contains(_shortPub(peerC)));
+    });
+
+    test('group_ops_log records remove op with applied=true', () async {
+      final gid = await setUpGroup();
+      final chatBefore = await dao.getChat(gid);
+      final oldOpSeq = chatBefore!.lastOpSeq;
+
+      await service.removeMemberFromGroup(
+          chatId: gid, targetPubkeyHex: peerC);
+
+      final ops = await groupOpsLogDao.forChat(gid);
+      final removeOps = ops.where((o) => o.kind == 'remove').toList();
+
+      expect(removeOps, hasLength(1));
+      expect(removeOps.first.applied, isTrue);
+      expect(removeOps.first.targetPubkeyHex, peerC);
+      expect(removeOps.first.signerPubkeyHex, myPub);
+      expect(removeOps.first.opSeq, oldOpSeq + 1);
+    });
+
+    test('member_remove sig field round-trips through SigningService.verify',
+        () async {
+      final gid = await setUpGroup();
+
+      await service.removeMemberFromGroup(
+          chatId: gid, targetPubkeyHex: peerC);
+
+      // Pick any of the two member_remove frames (use the one to B).
+      final msgFrame = relay.sent.lastWhere((f) =>
+          f.envelope.first == EnvelopeTag.message && f.to == peerB);
+
+      final parsedEnv = EnvelopeWire.parse(msgFrame.envelope);
+      // FakeCrypto prepends 0xCC; strip it.
+      final innerBytes = parsedEnv.ciphertext!.sublist(1);
+      final inner = InnerEnvelope.parse(innerBytes);
+      expect(inner, isA<MemberRemoveEnvelope>());
+      final remove = inner as MemberRemoveEnvelope;
+
+      // Rebuild the canonical bytes from the inner envelope JSON (omit 'sig').
+      final rawJson = jsonDecode(utf8.decode(innerBytes)) as Map<String, dynamic>;
+      final canonical = canonicalJsonBytes(rawJson, omit: 'sig');
+
+      final signerPubHex = await signing.publicKeyHex();
+      final ok = await SigningService.verify(
+        publicKeyHex: signerPubHex,
+        message: canonical,
+        signature: hexToBytes(remove.sigHex),
+      );
+      expect(ok, isTrue,
+          reason: 'member_remove sig must verify against creator public key');
+    });
+
+    test('non-creator removeMemberFromGroup throws StateError', () async {
+      // Forge a group where creator is 'X' but self (myPub) is a plain member.
+      final forgedCreator = 'ee' * 32;
+      final gid = 'ff' * 16; // synthetic chatId
+      await dao.insertGroupChat(
+        chatId: gid,
+        groupName: 'ForgedGroup',
+        creatorPubkeyHex: forgedCreator,
+        createdAt: DateTime.now(),
+        initialOpSeq: 1,
+      );
+      await groupMembersDao.insertMember(
+        chatId: gid,
+        memberPubkeyHex: myPub,
+        addedByPubkeyHex: forgedCreator,
+        addedAt: DateTime.now(),
+      );
+      await groupMembersDao.insertMember(
+        chatId: gid,
+        memberPubkeyHex: peerB,
+        addedByPubkeyHex: forgedCreator,
+        addedAt: DateTime.now(),
+      );
+
+      expect(
+        () =>
+            service.removeMemberFromGroup(chatId: gid, targetPubkeyHex: peerB),
+        throwsStateError,
+      );
+    });
+
+    test('removing a non-member throws ArgumentError', () async {
+      final gid = await setUpGroup();
+
+      // peerD was never added.
+      await expectLater(
+        () =>
+            service.removeMemberFromGroup(chatId: gid, targetPubkeyHex: peerD),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('removing an already-removed member throws ArgumentError', () async {
+      final gid = await setUpGroup();
+
+      // First remove succeeds.
+      await service.removeMemberFromGroup(
+          chatId: gid, targetPubkeyHex: peerC);
+
+      // Second remove of the same member must throw.
+      await expectLater(
+        () =>
+            service.removeMemberFromGroup(chatId: gid, targetPubkeyHex: peerC),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+  });
+
   group('bundle-exchange state persists across restart (T3.4)', () {
     late Directory tempDir;
     late File dbFile;

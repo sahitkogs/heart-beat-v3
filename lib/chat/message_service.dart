@@ -389,6 +389,95 @@ class MessageService {
     }
   }
 
+  /// Remove a member from a group. Only the creator can remove. Builds and
+  /// fans out a signed `member_remove` JSON to every current active member
+  /// **including the target** (so the target's UI locks down too — spec §7.6).
+  ///
+  /// Throws StateError if the chat doesn't exist, isn't a group, or self isn't
+  /// the creator. Throws ArgumentError if the target is not a currently active
+  /// member.
+  Future<void> removeMemberFromGroup({
+    required String chatId,
+    required String targetPubkeyHex,
+  }) async {
+    final chat = await dao.getChat(chatId);
+    if (chat == null || chat.kind != 'group') {
+      throw StateError('removeMemberFromGroup: not a group $chatId');
+    }
+    if (chat.creatorPubkeyHex != myPubkeyHex) {
+      throw StateError('removeMemberFromGroup: not creator');
+    }
+    if (!await groupMembersDao.isActiveMember(chatId, targetPubkeyHex)) {
+      throw ArgumentError('not an active member');
+    }
+
+    // Snapshot active members BEFORE markRemoved so the target is included in
+    // the fan-out list (spec §7.6 step 6 — "fan-out to all current members
+    // including the target").
+    final activeBefore = await groupMembersDao.activeMembers(chatId);
+
+    final now = DateTime.now();
+    final newOpSeq = chat.lastOpSeq + 1;
+
+    // Local state
+    await dao.bumpLastOpSeq(chatId, newOpSeq);
+    await groupMembersDao.markRemoved(
+      chatId: chatId,
+      memberPubkeyHex: targetPubkeyHex,
+      removedAt: now,
+    );
+    final lamport = await dao.bumpLamport(chatId);
+    await dao.insertMessage(MessagesCompanion.insert(
+      id: _uuid.v4(),
+      chatId: chatId,
+      senderPubkeyHex: myPubkeyHex,
+      body: 'You removed ${_short(targetPubkeyHex)}',
+      lamport: lamport,
+      sentAt: now,
+      kind: const Value('member_remove'),
+    ));
+    await dao.updateLastMessage(
+        chatId, 'You removed ${_short(targetPubkeyHex)}', now);
+
+    // Build + sign member_remove
+    final removeBody = <String, dynamic>{
+      'v': 1, 'type': 'member_remove',
+      'chatId': chatId, 'lamport': lamport,
+      'target': targetPubkeyHex,
+      'removedAt': now.toUtc().toIso8601String(),
+      'opSeq': newOpSeq,
+    };
+    final canonical = canonicalJsonBytes(removeBody);
+    final sigBytes = await signing.sign(canonical);
+    final sigHex = bytesToHex(sigBytes);
+    final removeBytes = InnerEnvelope.buildMemberRemove(
+      chatId: chatId, lamport: lamport, target: targetPubkeyHex,
+      removedAt: now, opSeq: newOpSeq, sigHex: sigHex,
+    );
+
+    await groupOpsLogDao.append(
+      id: _uuid.v4(), chatId: chatId, opSeq: newOpSeq,
+      kind: 'remove', targetPubkeyHex: targetPubkeyHex,
+      signerPubkeyHex: myPubkeyHex, signatureHex: sigHex,
+      applied: true,
+    );
+
+    _log('removeMemberFromGroup chatId=${_short(chatId)} '
+        'target=${_short(targetPubkeyHex)} opSeq=$newOpSeq');
+
+    // Fan-out: every active-before member except self, INCLUDING the target.
+    for (final m in activeBefore) {
+      if (m.memberPubkeyHex == myPubkeyHex) continue;
+      try {
+        await _maybeSendOwnBundle(m.memberPubkeyHex);
+        await _sendOrQueueGroupBytes(m.memberPubkeyHex, removeBytes);
+      } catch (e, st) {
+        _log('removeMember fan-out FAIL peer=${_short(m.memberPubkeyHex)} '
+            'err=$e\n$st');
+      }
+    }
+  }
+
   String _randomChatId() {
     final rand = Random.secure();
     final bytes = List<int>.generate(16, (_) => rand.nextInt(256));
