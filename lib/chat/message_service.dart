@@ -773,9 +773,14 @@ class MessageService {
       return;
     }
 
+    if (inner is MemberRemoveEnvelope) {
+      await _handleMemberRemove(frame, inner);
+      return;
+    }
+
     if (inner is! TextEnvelope) {
-      // MemberRemove/Leave land in T6.4/T6.5; for now log + drop so
-      // we don't accidentally pollute the direct-chat row.
+      // MemberLeave lands in T6.5; for now log + drop so we don't accidentally
+      // pollute the direct-chat row.
       _log('unhandled_inner_type type=${inner.runtimeType}');
       return;
     }
@@ -1090,6 +1095,138 @@ class MessageService {
       applied: true,
     );
     _log('member_add accepted chat=${_short(inv.chatId)} '
+        'target=${_short(inv.target)} opSeq=${inv.opSeq}');
+  }
+
+  /// T6.4 — handle inbound `member_remove` envelope on the foreground path.
+  /// Spec §6.7 + §7.8 + §7.9 verification:
+  ///   1. chat must exist locally and be `kind='group'`
+  ///   2. signer (libsignal-session sender) must equal `chats.creator_pubkey_hex`
+  ///   3. Ed25519 sig over canonical bytes verifies under the creator pubkey
+  ///   4. `target ∈ group_members` (any row, active or already-removed —
+  ///      double-remove retransmits must be idempotent, not dropped)
+  ///   5. opSeq window:
+  ///      - `<= chat.lastOpSeq` → drop with `op_seq_stale` (no ops_log row)
+  ///      - `> chat.lastOpSeq + 1` → accept but log `op_seq_gap`
+  ///      - `== chat.lastOpSeq + 1` → normal accept
+  /// Sig-verify failures log + drop AND append `group_ops_log applied=false`.
+  /// On accept: mark the target removed, bump lastOpSeq, if target==self also
+  /// set `chats.leftAt`, insert system message, append `group_ops_log applied=true`.
+  Future<void> _handleMemberRemove(
+    DeliverFrame frame,
+    MemberRemoveEnvelope inv,
+  ) async {
+    final chat = await dao.getChat(inv.chatId);
+    if (chat == null) {
+      _log('[Group] member_remove_unknown_chat chat=${_short(inv.chatId)} '
+          'from=${_short(frame.fromPubkeyHex)}');
+      return;
+    }
+    if (chat.kind != 'group') {
+      _log('[Group] member_remove_wrong_kind chat=${_short(inv.chatId)} '
+          'kind=${chat.kind}');
+      return;
+    }
+    if (frame.fromPubkeyHex != chat.creatorPubkeyHex) {
+      _log('[Group] member_remove_signer_not_creator chat=${_short(inv.chatId)} '
+          'from=${_short(frame.fromPubkeyHex)} '
+          'creator=${_short(chat.creatorPubkeyHex ?? "")}');
+      return;
+    }
+
+    // Rebuild canonical bytes from the typed fields (no `sig`) and verify.
+    // Note: field is `removedAt` (not `addedAt`).
+    final canonicalBody = <String, dynamic>{
+      'v': 1, 'type': 'member_remove',
+      'chatId': inv.chatId, 'lamport': inv.lamport,
+      'target': inv.target,
+      'removedAt': inv.removedAt.toUtc().toIso8601String(),
+      'opSeq': inv.opSeq,
+    };
+    final canonical = canonicalJsonBytes(canonicalBody);
+    final sigOk = await SigningService.verify(
+      publicKeyHex: chat.creatorPubkeyHex!,
+      message: canonical,
+      signature: hexToBytes(inv.sigHex),
+    );
+    if (!sigOk) {
+      _log('[Group] member_remove_sig_fail chat=${_short(inv.chatId)} '
+          'target=${_short(inv.target)}');
+      await groupOpsLogDao.append(
+        id: _uuid.v4(),
+        chatId: inv.chatId,
+        opSeq: inv.opSeq,
+        kind: 'remove',
+        targetPubkeyHex: inv.target,
+        signerPubkeyHex: chat.creatorPubkeyHex!,
+        signatureHex: inv.sigHex,
+        applied: false,
+      );
+      return;
+    }
+
+    // Spec §6.7: target must be in `group_members` (any row, active OR already
+    // removed). Using `allMembers` here — NOT `isActiveMember` — keeps retrans-
+    // mit double-removes idempotent (markRemoved becomes a no-op update rather
+    // than us mistakenly dropping them as unknown_target).
+    final all = await groupMembersDao.allMembers(inv.chatId);
+    final targetExists = all.any((m) => m.memberPubkeyHex == inv.target);
+    if (!targetExists) {
+      _log('[Group] member_remove_unknown_target chat=${_short(inv.chatId)} '
+          'target=${_short(inv.target)}');
+      return;
+    }
+
+    // opSeq window. Spec §7.9 — same rules as member_add.
+    if (inv.opSeq <= chat.lastOpSeq) {
+      _log('[Group] op_seq_stale chat=${_short(inv.chatId)} '
+          'incoming=${inv.opSeq} local=${chat.lastOpSeq}');
+      return;
+    }
+    if (inv.opSeq > chat.lastOpSeq + 1) {
+      _log('[Group] op_seq_gap chat=${_short(inv.chatId)} '
+          'incoming=${inv.opSeq} local=${chat.lastOpSeq}');
+      // fall through and accept
+    }
+
+    // Accept: mark removed + bump opSeq + (if self) setLeftAt + system msg + ops log.
+    final now = DateTime.now();
+    await groupMembersDao.markRemoved(
+      chatId: inv.chatId,
+      memberPubkeyHex: inv.target,
+      removedAt: inv.removedAt,
+    );
+    if (inv.target == myPubkeyHex) {
+      await dao.setLeftAt(inv.chatId, now);
+    }
+    await dao.bumpLastOpSeq(inv.chatId, inv.opSeq);
+
+    final body = inv.target == myPubkeyHex
+        ? '${_short(chat.creatorPubkeyHex!)} removed you'
+        : '${_short(chat.creatorPubkeyHex!)} removed ${_short(inv.target)}';
+    final lamport = await dao.observeLamport(inv.chatId, inv.lamport);
+    await dao.insertMessage(MessagesCompanion.insert(
+      id: _uuid.v4(),
+      chatId: inv.chatId,
+      senderPubkeyHex: chat.creatorPubkeyHex!,
+      body: body,
+      lamport: lamport,
+      sentAt: inv.removedAt,
+      receivedAt: Value(now),
+      kind: const Value('member_remove'),
+    ));
+    await dao.updateLastMessage(inv.chatId, body, now);
+    await groupOpsLogDao.append(
+      id: _uuid.v4(),
+      chatId: inv.chatId,
+      opSeq: inv.opSeq,
+      kind: 'remove',
+      targetPubkeyHex: inv.target,
+      signerPubkeyHex: chat.creatorPubkeyHex!,
+      signatureHex: inv.sigHex,
+      applied: true,
+    );
+    _log('member_remove accepted chat=${_short(inv.chatId)} '
         'target=${_short(inv.target)} opSeq=${inv.opSeq}');
   }
 

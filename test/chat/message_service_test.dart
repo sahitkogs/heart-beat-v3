@@ -2262,6 +2262,327 @@ void main() {
     });
   });
 
+  group('handle inbound member_remove (T6.4)', () {
+    /// Seed a group chat where `creator` is the group creator, self ([myPub])
+    /// is a pre-seeded member, and [extraMember] (if provided) is also a
+    /// pre-seeded active member. Returns the creator's pubkey + SigningService
+    /// so the test can synthesize signed envelopes. The chat starts at
+    /// [initialOpSeq].
+    Future<({String chatId, String creator, SigningService creatorSigning})>
+        setupReceivedGroup({
+      required int initialOpSeq,
+      bool seedSelfAsMember = true,
+      String? extraMember,
+    }) async {
+      final creatorSigning = await makeSigningService();
+      final creator = await creatorSigning.publicKeyHex();
+      await contactsRepo.add(contact_model.Contact(
+        pubkeyHex: creator,
+        addedAt: DateTime.now(),
+      ));
+      final chatId = '11' * 16; // synthetic
+      final createdAt = DateTime.utc(2026, 5, 21);
+      await dao.insertGroupChat(
+        chatId: chatId,
+        groupName: 'TestG',
+        creatorPubkeyHex: creator,
+        createdAt: createdAt,
+        initialOpSeq: initialOpSeq,
+      );
+      await groupMembersDao.insertMember(
+        chatId: chatId,
+        memberPubkeyHex: creator,
+        addedByPubkeyHex: creator,
+        addedAt: createdAt,
+      );
+      if (seedSelfAsMember) {
+        await groupMembersDao.insertMember(
+          chatId: chatId,
+          memberPubkeyHex: myPub,
+          addedByPubkeyHex: creator,
+          addedAt: createdAt,
+        );
+      }
+      if (extraMember != null) {
+        await groupMembersDao.insertMember(
+          chatId: chatId,
+          memberPubkeyHex: extraMember,
+          addedByPubkeyHex: creator,
+          addedAt: createdAt,
+        );
+      }
+      return (chatId: chatId, creator: creator, creatorSigning: creatorSigning);
+    }
+
+    /// Build a libsignal-decrypted-and-then-pseudo-encrypted member_remove
+    /// envelope wrapped in [EnvelopeWire.wrapMessage]. FakeCrypto's `decrypt`
+    /// strips a leading 0xCC so the receiver gets the raw JSON inner bytes.
+    Future<List<int>> buildSignedMemberRemoveEnvelope({
+      required SigningService creatorSigning,
+      required String chatId,
+      required String target,
+      required DateTime removedAt,
+      required int opSeq,
+      int lamport = 1,
+      bool tamperSig = false,
+    }) async {
+      final canonicalBody = <String, dynamic>{
+        'v': 1, 'type': 'member_remove',
+        'chatId': chatId, 'lamport': lamport,
+        'target': target,
+        'removedAt': removedAt.toUtc().toIso8601String(),
+        'opSeq': opSeq,
+      };
+      final canonical = canonicalJsonBytes(canonicalBody);
+      final sigBytes = await creatorSigning.sign(canonical);
+      var sigHex = bytesToHex(sigBytes);
+      if (tamperSig) {
+        final mutable = List<int>.from(sigBytes);
+        mutable[0] = mutable[0] ^ 0xFF;
+        sigHex = bytesToHex(mutable);
+      }
+      final inner = InnerEnvelope.buildMemberRemove(
+        chatId: chatId,
+        lamport: lamport,
+        target: target,
+        removedAt: removedAt,
+        opSeq: opSeq,
+        sigHex: sigHex,
+      );
+      final ciphertext = [0xCC, ...inner];
+      return EnvelopeWire.wrapMessage(ciphertext);
+    }
+
+    test('happy path: creator removes a third party → member removed, '
+        'lastOpSeq bumped, leftAt unset, system row + ops_log applied=true',
+        () async {
+      final peerC = '77' * 32;
+      final g = await setupReceivedGroup(
+        initialOpSeq: 1,
+        extraMember: peerC,
+      );
+      final removedAt = DateTime.utc(2026, 5, 21, 12);
+      final envelope = await buildSignedMemberRemoveEnvelope(
+        creatorSigning: g.creatorSigning,
+        chatId: g.chatId,
+        target: peerC,
+        removedAt: removedAt,
+        opSeq: 2,
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: g.creator, envelope: envelope));
+      await drainMicrotasks();
+
+      // peerC no longer in activeMembers, but still in allMembers.
+      final active = await groupMembersDao.activeMembers(g.chatId);
+      expect(active.map((m) => m.memberPubkeyHex), isNot(contains(peerC)));
+      final all = await groupMembersDao.allMembers(g.chatId);
+      expect(all.map((m) => m.memberPubkeyHex), contains(peerC));
+
+      // lastOpSeq bumped; leftAt still null (self wasn't the target).
+      final chat = await dao.getChat(g.chatId);
+      expect(chat!.lastOpSeq, 2);
+      expect(chat.leftAt, isNull);
+
+      // System message present with both creator + target shorts,
+      // kind=member_remove.
+      final msgs = await dao.watchMessages(g.chatId).first;
+      final sys = msgs.where((m) => m.kind == 'member_remove').toList();
+      expect(sys, hasLength(1));
+      expect(sys.first.senderPubkeyHex, g.creator);
+      expect(sys.first.body, contains(_shortPub(g.creator)));
+      expect(sys.first.body, contains(_shortPub(peerC)));
+
+      // ops_log applied=true with kind='remove'.
+      final ops = await groupOpsLogDao.forChat(g.chatId);
+      final removeOps = ops.where((o) => o.kind == 'remove').toList();
+      expect(removeOps, hasLength(1));
+      expect(removeOps.first.applied, isTrue);
+      expect(removeOps.first.targetPubkeyHex, peerC);
+      expect(removeOps.first.opSeq, 2);
+    });
+
+    test('target == self → chats.leftAt set; body is "<creator> removed you"',
+        () async {
+      final g = await setupReceivedGroup(initialOpSeq: 1);
+      final removedAt = DateTime.utc(2026, 5, 21, 12);
+      final envelope = await buildSignedMemberRemoveEnvelope(
+        creatorSigning: g.creatorSigning,
+        chatId: g.chatId,
+        target: myPub,
+        removedAt: removedAt,
+        opSeq: 2,
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: g.creator, envelope: envelope));
+      await drainMicrotasks();
+
+      // leftAt set, self no longer active.
+      final chat = await dao.getChat(g.chatId);
+      expect(chat!.leftAt, isNotNull);
+      expect(await groupMembersDao.isActiveMember(g.chatId, myPub), isFalse);
+
+      // System message body is the "removed you" branch.
+      final msgs = await dao.watchMessages(g.chatId).first;
+      final sys = msgs.where((m) => m.kind == 'member_remove').toList();
+      expect(sys, hasLength(1));
+      expect(sys.first.body, '${_shortPub(g.creator)} removed you');
+    });
+
+    test('sig fail → dropped; ops_log applied=false; target still active',
+        () async {
+      final peerC = '77' * 32;
+      final g = await setupReceivedGroup(
+        initialOpSeq: 1,
+        extraMember: peerC,
+      );
+      final envelope = await buildSignedMemberRemoveEnvelope(
+        creatorSigning: g.creatorSigning,
+        chatId: g.chatId,
+        target: peerC,
+        removedAt: DateTime.utc(2026, 5, 21, 12),
+        opSeq: 2,
+        tamperSig: true,
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: g.creator, envelope: envelope));
+      await drainMicrotasks();
+
+      // Target still active.
+      expect(await groupMembersDao.isActiveMember(g.chatId, peerC), isTrue);
+
+      // lastOpSeq not bumped.
+      final chat = await dao.getChat(g.chatId);
+      expect(chat!.lastOpSeq, 1);
+      expect(chat.leftAt, isNull);
+
+      // ops_log applied=false.
+      final ops = await groupOpsLogDao.forChat(g.chatId);
+      final removeOps = ops.where((o) => o.kind == 'remove').toList();
+      expect(removeOps, hasLength(1));
+      expect(removeOps.first.applied, isFalse);
+      expect(removeOps.first.targetPubkeyHex, peerC);
+    });
+
+    test('signer is not the creator → dropped (no ops_log row)', () async {
+      final peerC = '77' * 32;
+      final g = await setupReceivedGroup(
+        initialOpSeq: 1,
+        extraMember: peerC,
+      );
+      final imposter = 'ee' * 32;
+      final envelope = await buildSignedMemberRemoveEnvelope(
+        creatorSigning: g.creatorSigning,
+        chatId: g.chatId,
+        target: peerC,
+        removedAt: DateTime.utc(2026, 5, 21, 12),
+        opSeq: 2,
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: imposter, envelope: envelope));
+      await drainMicrotasks();
+
+      // Target still active; no bump; no ops_log row.
+      expect(await groupMembersDao.isActiveMember(g.chatId, peerC), isTrue);
+      final chat = await dao.getChat(g.chatId);
+      expect(chat!.lastOpSeq, 1);
+      final ops = await groupOpsLogDao.forChat(g.chatId);
+      expect(ops.where((o) => o.kind == 'remove'), isEmpty);
+    });
+
+    test('stale opSeq (<= last) → dropped; no ops_log row; target still active',
+        () async {
+      final peerC = '77' * 32;
+      final g = await setupReceivedGroup(
+        initialOpSeq: 5,
+        extraMember: peerC,
+      );
+      final envelope = await buildSignedMemberRemoveEnvelope(
+        creatorSigning: g.creatorSigning,
+        chatId: g.chatId,
+        target: peerC,
+        removedAt: DateTime.utc(2026, 5, 21, 12),
+        opSeq: 5,
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: g.creator, envelope: envelope));
+      await drainMicrotasks();
+
+      expect(await groupMembersDao.isActiveMember(g.chatId, peerC), isTrue);
+      final chat = await dao.getChat(g.chatId);
+      expect(chat!.lastOpSeq, 5);
+      final ops = await groupOpsLogDao.forChat(g.chatId);
+      expect(ops.where((o) => o.kind == 'remove'), isEmpty);
+    });
+
+    test('gap opSeq (> last+1) → accepted; lastOpSeq jumps; ops_log applied=true',
+        () async {
+      final peerC = '77' * 32;
+      final g = await setupReceivedGroup(
+        initialOpSeq: 1,
+        extraMember: peerC,
+      );
+      final envelope = await buildSignedMemberRemoveEnvelope(
+        creatorSigning: g.creatorSigning,
+        chatId: g.chatId,
+        target: peerC,
+        removedAt: DateTime.utc(2026, 5, 21, 12),
+        opSeq: 3,
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: g.creator, envelope: envelope));
+      await drainMicrotasks();
+
+      expect(await groupMembersDao.isActiveMember(g.chatId, peerC), isFalse);
+      final chat = await dao.getChat(g.chatId);
+      expect(chat!.lastOpSeq, 3);
+      final ops = await groupOpsLogDao.forChat(g.chatId);
+      final removeOps = ops.where((o) => o.kind == 'remove').toList();
+      expect(removeOps, hasLength(1));
+      expect(removeOps.first.applied, isTrue);
+      expect(removeOps.first.opSeq, 3);
+    });
+
+    test('unknown target (never in group_members) → dropped; no bump; no log; '
+        'no member row created', () async {
+      final g = await setupReceivedGroup(initialOpSeq: 1);
+      final peerZ = '99' * 32; // never been a member of this chat
+      final envelope = await buildSignedMemberRemoveEnvelope(
+        creatorSigning: g.creatorSigning,
+        chatId: g.chatId,
+        target: peerZ,
+        removedAt: DateTime.utc(2026, 5, 21, 12),
+        opSeq: 2,
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: g.creator, envelope: envelope));
+      await drainMicrotasks();
+
+      // No member row for peerZ (neither active nor removed).
+      final all = await groupMembersDao.allMembers(g.chatId);
+      expect(all.map((m) => m.memberPubkeyHex), isNot(contains(peerZ)));
+
+      // No bump, no ops_log row.
+      final chat = await dao.getChat(g.chatId);
+      expect(chat!.lastOpSeq, 1);
+      final ops = await groupOpsLogDao.forChat(g.chatId);
+      expect(ops.where((o) => o.kind == 'remove'), isEmpty);
+    });
+
+    test('unknown chat → dropped', () async {
+      final creatorSigning = await makeSigningService();
+      final creator = await creatorSigning.publicKeyHex();
+      final unknownChatId = '22' * 16;
+      final target = '77' * 32;
+      final envelope = await buildSignedMemberRemoveEnvelope(
+        creatorSigning: creatorSigning,
+        chatId: unknownChatId,
+        target: target,
+        removedAt: DateTime.utc(2026, 5, 21, 12),
+        opSeq: 2,
+      );
+      relay.emit(DeliverFrame(fromPubkeyHex: creator, envelope: envelope));
+      await drainMicrotasks();
+
+      expect(await dao.getChat(unknownChatId), isNull);
+      final ops = await groupOpsLogDao.forChat(unknownChatId);
+      expect(ops, isEmpty);
+    });
+  });
+
   group('bundle-exchange state persists across restart (T3.4)', () {
     late Directory tempDir;
     late File dbFile;
