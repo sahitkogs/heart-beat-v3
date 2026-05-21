@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
@@ -11,6 +10,7 @@ import '../relay/relay_client.dart';
 import '../relay/relay_frames.dart';
 import '../services/crypto_service.dart';
 import '../services/wake_client.dart';
+import 'group_envelope.dart';
 import 'pre_key_bootstrap.dart';
 
 /// Orchestrates the encrypt → send → persist and receive → decrypt → persist
@@ -49,7 +49,8 @@ class MessageService {
   // every wake, and state survives app restarts.
   // Only the pending-outbound queue stays in-memory — it's session-scoped and
   // drains the moment the peer's bundle arrives.
-  final Map<String, List<String>> _pendingByPeer = <String, List<String>>{};
+  // Entries are JSON inner-envelope bytes (List<int>), not raw strings.
+  final Map<String, List<List<int>>> _pendingByPeer = <String, List<List<int>>>{};
 
   // Envelopes (message ones only, NOT bundles) that we've handed to the
   // relay but haven't proven made it to the peer. On a `recipient_offline`
@@ -73,17 +74,26 @@ class MessageService {
     _log('sendText peer=${_short(peerPubkeyHex)} bodyLen=${body.length}');
     await dao.ensureDirectChat(peerPubkeyHex);
     await _maybeSendOwnBundle(peerPubkeyHex);
-    await _persistOutbound(peerPubkeyHex, body);
+
+    // Compute lamport once; use it for both the persisted row and the
+    // JSON inner envelope so they stay in sync.
+    final lamport = await dao.bumpLamport(peerPubkeyHex);
+    final jsonBytes = InnerEnvelope.buildText(
+      chatId: peerPubkeyHex,
+      lamport: lamport,
+      body: body,
+    );
+    await _persistOutbound(peerPubkeyHex, body, lamport);
 
     final peerState = await peerBundleDao.get(peerPubkeyHex);
     if (peerState?.peerBundleReceivedAt == null) {
-      (_pendingByPeer[peerPubkeyHex] ??= <String>[]).add(body);
+      (_pendingByPeer[peerPubkeyHex] ??= <List<int>>[]).add(jsonBytes);
       _log('queued (no peer bundle yet) peer=${_short(peerPubkeyHex)} '
           'queueDepth=${_pendingByPeer[peerPubkeyHex]!.length}');
       return;
     }
     try {
-      await _encryptAndSend(peerPubkeyHex, body);
+      await _encryptAndSend(peerPubkeyHex, jsonBytes);
       _log('encrypted+sent peer=${_short(peerPubkeyHex)}');
     } catch (e, st) {
       _log('ENCRYPT FAIL peer=${_short(peerPubkeyHex)} err=$e\n$st');
@@ -108,8 +118,11 @@ class MessageService {
         '${stamped.preKeyId} regId=${stamped.registrationId})');
   }
 
-  Future<void> _persistOutbound(String peerPubkeyHex, String body) async {
-    final lamport = await dao.bumpLamport(peerPubkeyHex);
+  Future<void> _persistOutbound(
+    String peerPubkeyHex,
+    String body,
+    int lamport,
+  ) async {
     final now = DateTime.now();
     await dao.insertMessage(MessagesCompanion.insert(
       id: _uuid.v4(),
@@ -118,12 +131,12 @@ class MessageService {
       body: body,
       lamport: lamport,
       sentAt: now,
+      kind: const Value('text'),
     ));
     await dao.updateLastMessage(peerPubkeyHex, _preview(body), now);
   }
 
-  Future<void> _encryptAndSend(String peerPubkeyHex, String body) async {
-    final plaintext = utf8.encode(body);
+  Future<void> _encryptAndSend(String peerPubkeyHex, List<int> plaintext) async {
     final ciphertext = await crypto.encrypt(
       peerPubkeyHex: peerPubkeyHex,
       plaintext: plaintext,
@@ -234,9 +247,9 @@ class MessageService {
       if (pending != null) {
         _log('draining ${pending.length} pending msg(s) to '
             '${_short(frame.fromPubkeyHex)}');
-        for (final body in pending) {
+        for (final jsonBytes in pending) {
           try {
-            await _encryptAndSend(frame.fromPubkeyHex, body);
+            await _encryptAndSend(frame.fromPubkeyHex, jsonBytes);
             _log('drained+sent peer=${_short(frame.fromPubkeyHex)}');
           } catch (e, st) {
             _log('drain ENCRYPT FAIL: $e\n$st');
@@ -258,10 +271,30 @@ class MessageService {
       _log('DECRYPT FAIL from=${_short(frame.fromPubkeyHex)} err=$e\n$st');
       return;
     }
-    final body = utf8.decode(plaintext);
+    final InnerEnvelope inner;
+    try {
+      inner = InnerEnvelope.parse(plaintext);
+    } on FormatException catch (e) {
+      _log('inner_parse_fail from=${_short(frame.fromPubkeyHex)} err=$e');
+      return;
+    }
+
+    if (inner is! TextEnvelope) {
+      _log('non_text_inner_in_direct_path type=${inner.runtimeType}');
+      return; // Groups land in T6. For T4, direct path only handles text.
+    }
+
+    // Direct-chat spoof guard: inner.chatId must equal the libsignal-session sender.
+    if (inner.chatId != frame.fromPubkeyHex) {
+      _log('direct_chat_id_mismatch from=${_short(frame.fromPubkeyHex)} '
+          'innerChatId=${_short(inner.chatId)}');
+      return;
+    }
+
+    final body = inner.body;
     _log('decrypted from=${_short(frame.fromPubkeyHex)} bodyLen=${body.length}');
 
-    final lamport = await dao.bumpLamport(frame.fromPubkeyHex);
+    final lamport = await dao.observeLamport(frame.fromPubkeyHex, inner.lamport);
     final now = DateTime.now();
     await dao.insertMessage(MessagesCompanion.insert(
       id: _uuid.v4(),
@@ -271,6 +304,7 @@ class MessageService {
       lamport: lamport,
       sentAt: now,
       receivedAt: Value(now),
+      kind: const Value('text'),
     ));
     await dao.updateLastMessage(frame.fromPubkeyHex, _preview(body), now);
   }

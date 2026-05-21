@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
+import 'package:app_v3/chat/group_envelope.dart';
 import 'package:app_v3/chat/message_service.dart';
 import 'package:app_v3/chat/pre_key_bootstrap.dart';
 import 'package:app_v3/data/app_database.dart';
@@ -233,7 +233,12 @@ void main() {
         .toList();
     expect(msgEnvelopes.length, 1);
     final parsedMsg = EnvelopeWire.parse(msgEnvelopes.first.envelope);
-    expect(utf8.decode(parsedMsg.ciphertext!.sublist(1)), 'queued');
+    // FakeCrypto prepends 0xCC; strip it to get the inner JSON bytes.
+    final innerBytes = parsedMsg.ciphertext!.sublist(1);
+    final inner = InnerEnvelope.parse(innerBytes);
+    expect(inner, isA<TextEnvelope>());
+    expect((inner as TextEnvelope).body, 'queued');
+    expect(inner.chatId, peerPub);
   });
 
   test('second sendText after bundle is already established sends immediately',
@@ -259,7 +264,14 @@ void main() {
   });
 
   test('inbound message envelope decrypts and persists a row', () async {
-    final ciphertext = [0xCC, ...utf8.encode('hi from peer')];
+    // Sender uses JSON inner envelope; chatId must equal fromPubkeyHex for
+    // the direct-chat spoof guard to pass.
+    final innerBytes = InnerEnvelope.buildText(
+      chatId: peerPub,
+      lamport: 1,
+      body: 'hi from peer',
+    );
+    final ciphertext = [0xCC, ...innerBytes];
     final envelope = EnvelopeWire.wrapMessage(ciphertext);
 
     relay.emit(DeliverFrame(fromPubkeyHex: peerPub, envelope: envelope));
@@ -492,7 +504,11 @@ void main() {
       relay.emit(DeliverFrame(
         fromPubkeyHex: peerPub,
         envelope: EnvelopeWire.wrapMessage(
-          [0xCC, ...utf8.encode('back online')],
+          [0xCC, ...InnerEnvelope.buildText(
+            chatId: peerPub,
+            lamport: 1,
+            body: 'back online',
+          )],
         ),
       ));
       await drainMicrotasks();
