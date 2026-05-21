@@ -98,4 +98,8 @@ class ChatsDao extends DatabaseAccessor<AppDatabase> with _$ChatsDaoMixin {
   Future<Chat?> getChat(String chatId) =>
       (select(chats)..where((t) => t.chatId.equals(chatId)))
           .getSingleOrNull();
+
+  Stream<Chat?> watchChat(String chatId) =>
+      (select(chats)..where((t) => t.chatId.equals(chatId)))
+          .watchSingleOrNull();
 }

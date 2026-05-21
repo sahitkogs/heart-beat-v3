@@ -108,7 +108,7 @@ class _ChatTile extends ConsumerWidget {
       ),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => ChatThreadScreen(peerPubkeyHex: chat.chatId),
+          builder: (_) => ChatThreadScreen(chatId: chat.chatId),
         ),
       ),
     );
@@ -127,7 +127,7 @@ class _ChatTile extends ConsumerWidget {
       trailing: Text(trailing, style: Theme.of(context).textTheme.bodySmall),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => ChatThreadScreen(peerPubkeyHex: chat.chatId),
+          builder: (_) => ChatThreadScreen(chatId: chat.chatId),
         ),
       ),
     );

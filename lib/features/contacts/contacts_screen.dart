@@ -43,7 +43,7 @@ class ContactsScreen extends ConsumerWidget {
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) =>
-                        ChatThreadScreen(peerPubkeyHex: c.pubkeyHex),
+                        ChatThreadScreen(chatId: c.pubkeyHex),
                   ),
                 ),
               );

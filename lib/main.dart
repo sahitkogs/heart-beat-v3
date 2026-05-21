@@ -24,7 +24,7 @@ void _openChatThread(String peerPubkeyHex) {
   }
   state.push(
     MaterialPageRoute(
-      builder: (_) => ChatThreadScreen(peerPubkeyHex: peerPubkeyHex),
+      builder: (_) => ChatThreadScreen(chatId: peerPubkeyHex),
     ),
   );
 }

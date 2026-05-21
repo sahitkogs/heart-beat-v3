@@ -48,7 +48,7 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => ChatThreadScreen(peerPubkeyHex: chatId),
+            builder: (_) => ChatThreadScreen(chatId: chatId),
           ),
         );
       }
