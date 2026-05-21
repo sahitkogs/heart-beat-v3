@@ -11,6 +11,22 @@ class SigningService {
   final KeyStorage _keys;
   final _algo = Ed25519();
 
+  static final _verifyAlgo = Ed25519();
+
+  static Future<bool> verify({
+    required String publicKeyHex,
+    required List<int> message,
+    required List<int> signature,
+  }) async {
+    try {
+      final pubKey = SimplePublicKey(hexToBytes(publicKeyHex), type: KeyPairType.ed25519);
+      final sig = Signature(signature, publicKey: pubKey);
+      return await _verifyAlgo.verify(message, signature: sig);
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<List<int>> sign(List<int> bytes) async {
     final seedHex = await _keys.readPrivateKey();
     if (seedHex == null) {

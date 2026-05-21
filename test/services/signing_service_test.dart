@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:app_v3/core/hex_codec.dart';
 import 'package:app_v3/services/identity_service.dart';
 import 'package:app_v3/services/key_storage.dart';
@@ -40,5 +42,49 @@ void main() {
   test('sign throws when no key has been generated yet', () async {
     final signer = SigningService(KeyStorage(_MemoryStorage()));
     expect(() => signer.sign([1, 2, 3]), throwsStateError);
+  });
+
+  group('verify (static)', () {
+    test('accepts a valid signature', () async {
+      final keys = KeyStorage(_MemoryStorage());
+      final svc = SigningService(keys);
+      await keys.writePrivateKey('a' * 64); // 32-byte hex seed
+      final pubHex = await svc.publicKeyHex();
+      final msg = utf8.encode('hello group');
+      final sig = await svc.sign(msg);
+      final ok = await SigningService.verify(
+        publicKeyHex: pubHex,
+        message: msg,
+        signature: sig,
+      );
+      expect(ok, isTrue);
+    });
+
+    test('rejects a tampered signature', () async {
+      final keys = KeyStorage(_MemoryStorage());
+      final svc = SigningService(keys);
+      await keys.writePrivateKey('b' * 64);
+      final pubHex = await svc.publicKeyHex();
+      final sig = await svc.sign(utf8.encode('original'));
+      final ok = await SigningService.verify(
+        publicKeyHex: pubHex,
+        message: utf8.encode('tampered'),
+        signature: sig,
+      );
+      expect(ok, isFalse);
+    });
+
+    test('rejects under wrong pubkey', () async {
+      final keys = KeyStorage(_MemoryStorage());
+      final svc = SigningService(keys);
+      await keys.writePrivateKey('c' * 64);
+      final sig = await svc.sign(utf8.encode('msg'));
+      final ok = await SigningService.verify(
+        publicKeyHex: 'd' * 64,
+        message: utf8.encode('msg'),
+        signature: sig,
+      );
+      expect(ok, isFalse);
+    });
   });
 }
