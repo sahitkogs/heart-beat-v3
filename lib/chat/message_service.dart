@@ -698,7 +698,11 @@ class MessageService {
   Future<void> _handleDeliver(DeliverFrame frame) async {
     _log('inbound deliver from=${_short(frame.fromPubkeyHex)} '
         'envBytes=${frame.envelope.length} tag=0x${frame.envelope.isNotEmpty ? frame.envelope.first.toRadixString(16) : "??"}');
-    await dao.ensureDirectChat(frame.fromPubkeyHex);
+    // T8.1 carry-forward — DO NOT ensureDirectChat unconditionally here. A
+    // group envelope from a peer should not create a spurious direct-chat
+    // tile keyed by that peer. We gate the call into the bundle branch
+    // (bundles implicitly open a direct relationship) and into the
+    // TextEnvelope branch only when the resolved chat is direct or new.
     final ParsedEnvelope parsed;
     try {
       parsed = EnvelopeWire.parse(frame.envelope);
@@ -710,6 +714,8 @@ class MessageService {
     if (parsed.isBundle) {
       _log('inbound BUNDLE from=${_short(frame.fromPubkeyHex)} '
           'preKeyId=${parsed.bundle!.preKeyId} regId=${parsed.bundle!.registrationId}');
+      // Bundle implicitly opens a direct chat with the sender.
+      await dao.ensureDirectChat(frame.fromPubkeyHex);
       final existingState = await peerBundleDao.get(frame.fromPubkeyHex);
       final isFirstFromPeer = existingState?.peerBundleReceivedAt == null;
       try {
@@ -792,7 +798,15 @@ class MessageService {
 
     // T6.2 — route based on chat kind. The inner.chatId tells us which chat
     // this text belongs to; we verify the sender's authority for that chat.
-    final chat = await dao.getChat(inner.chatId);
+    var chat = await dao.getChat(inner.chatId);
+    // T8.1 carry-forward — for a direct-chat envelope (chatId == sender pubkey)
+    // that arrived without an existing chat row, lazily create the row. This
+    // is the bundle-then-text bootstrap recovery path. Group envelopes
+    // (chatId != sender) hit the `unknown_chat` path below as expected.
+    if (chat == null && inner.chatId == frame.fromPubkeyHex) {
+      await dao.ensureDirectChat(frame.fromPubkeyHex);
+      chat = await dao.getChat(inner.chatId);
+    }
     if (chat == null) {
       _log('[Group] msg_unknown_chat from=${_short(frame.fromPubkeyHex)} '
           'chat=${_short(inner.chatId)}');

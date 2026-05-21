@@ -101,11 +101,11 @@ Future<void> processFcmMessage(
     final dao = ChatsDao(db);
     final groupMembersDao = GroupMembersDao(db);
     final groupOpsLogDao = GroupOpsLogDao(db);
-    // Carry-forward (session 2): `ensureDirectChat(senderPubkeyHex)` here
-    // creates a spurious direct-chat row for the SENDER pubkey on every
-    // inbound (including group deliveries). Benign but cosmetic — flagged
-    // for the end-of-phase quality pass to gate on inner envelope type.
-    await dao.ensureDirectChat(senderPubkeyHex);
+    // T8.1 carry-forward — DO NOT ensureDirectChat unconditionally here. A
+    // group envelope from a peer would otherwise create a spurious direct-chat
+    // tile keyed by that peer. We gate the call into the bundle branch
+    // (bundles implicitly open a direct relationship) and into the
+    // TextEnvelope direct-chat path only when the chat row is missing.
 
     final peerBundleDao = PeerBundleStateDao(db);
     final crypto = LibsignalCryptoService(db);
@@ -113,6 +113,8 @@ Future<void> processFcmMessage(
 
     if (parsed.isBundle) {
       try {
+        // Bundle implicitly opens a direct chat with the sender.
+        await dao.ensureDirectChat(senderPubkeyHex);
         await crypto.processPeerPreKeyBundle(parsed.bundle!);
         await peerBundleDao.markPeerBundleReceived(senderPubkeyHex);
         _log('processed peer bundle from=${_short(senderPubkeyHex)}');
@@ -209,7 +211,14 @@ Future<void> processFcmMessage(
     }
 
     // T8.1 — route based on chat kind, mirroring foreground _handleDeliver.
-    final chat = await dao.getChat(inner.chatId);
+    var chat = await dao.getChat(inner.chatId);
+    // T8.1 carry-forward — bootstrap a direct-chat row if a direct-text
+    // envelope arrives without one (chatId == sender pubkey). Group
+    // envelopes (chatId != sender) fall through to unknown_chat.
+    if (chat == null && inner.chatId == senderPubkeyHex) {
+      await dao.ensureDirectChat(senderPubkeyHex);
+      chat = await dao.getChat(inner.chatId);
+    }
     if (chat == null) {
       _log('[Group] msg_unknown_chat from=${_short(senderPubkeyHex)} '
           'chat=${_short(inner.chatId)}');
