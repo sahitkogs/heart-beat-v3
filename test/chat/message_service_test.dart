@@ -10,6 +10,7 @@ import 'package:app_v3/relay/relay_client.dart';
 import 'package:app_v3/relay/relay_frames.dart';
 import 'package:app_v3/services/crypto_pre_key_bundle.dart';
 import 'package:app_v3/services/crypto_service.dart';
+import 'package:app_v3/services/key_storage.dart';
 import 'package:app_v3/services/signing_service.dart';
 import 'package:app_v3/services/wake_client.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -55,9 +56,21 @@ class _FakeRelay implements RelayClient {
   SigningService get signing => throw UnimplementedError();
 }
 
+class _NoopSecureStorage implements SecureKeyValueStorage {
+  @override
+  Future<String?> read(String key) async => null;
+  @override
+  Future<void> write(String key, String value) async {}
+  @override
+  Future<void> delete(String key) async {}
+}
+
 class _FakeWakeClient extends WakeClient {
   _FakeWakeClient(this._respond)
-      : super(baseUri: Uri.parse('http://wake.test'));
+      : super(
+          baseUri: Uri.parse('http://wake.test'),
+          signing: SigningService(KeyStorage(_NoopSecureStorage())),
+        );
 
   final WakeResult Function() _respond;
   final List<_WakeCall> calls = [];

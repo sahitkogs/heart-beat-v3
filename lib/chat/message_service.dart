@@ -179,6 +179,8 @@ class MessageService {
         _log('wake_failed_network peer=${_short(peer)} detail=${result.detail}');
       case WakeStatus.serverError:
         _log('wake_failed_server peer=${_short(peer)} detail=${result.detail}');
+      case WakeStatus.unauthorized:
+        _log('wake_failed_unauthorized peer=${_short(peer)} detail=${result.detail}');
     }
   }
 

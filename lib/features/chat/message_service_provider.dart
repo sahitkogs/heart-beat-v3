@@ -31,7 +31,11 @@ final relayClientProvider = FutureProvider<RelayClient>((ref) async {
 });
 
 final wakeClientProvider = Provider<WakeClient>((ref) {
-  final client = WakeClient(baseUri: Uri.parse(relayHttpBaseUrl));
+  final signing = ref.watch(signingServiceProvider);
+  final client = WakeClient(
+    baseUri: Uri.parse(relayHttpBaseUrl),
+    signing: signing,
+  );
   ref.onDispose(() => client.dispose());
   return client;
 });
