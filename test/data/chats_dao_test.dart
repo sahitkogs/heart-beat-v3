@@ -14,22 +14,22 @@ void main() {
 
   tearDown(() => db.close());
 
-  test('ensureChat is idempotent', () async {
-    await dao.ensureChat('peer1');
-    await dao.ensureChat('peer1');
+  test('ensureDirectChat is idempotent', () async {
+    await dao.ensureDirectChat('peer1');
+    await dao.ensureDirectChat('peer1');
     final chats = await dao.watchChats().first;
     expect(chats.length, 1);
   });
 
   test('bumpLamport monotonically increments', () async {
-    await dao.ensureChat('peer1');
+    await dao.ensureDirectChat('peer1');
     expect(await dao.bumpLamport('peer1'), 1);
     expect(await dao.bumpLamport('peer1'), 2);
     expect(await dao.bumpLamport('peer1'), 3);
   });
 
   test('observeLamport advances to remote when remote is higher', () async {
-    await dao.ensureChat('peer1');
+    await dao.ensureDirectChat('peer1');
     await dao.bumpLamport('peer1'); // local=1
     final next = await dao.observeLamport('peer1', 10);
     expect(next, 10);
@@ -38,47 +38,24 @@ void main() {
   });
 
   test('observeLamport keeps local when local is higher', () async {
-    await dao.ensureChat('peer1');
+    await dao.ensureDirectChat('peer1');
     await dao.bumpLamport('peer1'); // 1
     await dao.bumpLamport('peer1'); // 2
     final next = await dao.observeLamport('peer1', 1);
     expect(next, 2);
   });
 
-  group('bundle exchange state (schema v4)', () {
-    test('fresh chat row has nullable bundle timestamps', () async {
-      // bundleSentAt / peerBundleReceivedAt moved to PeerBundleState table.
-      // Assertions re-written in T3.1. Body stubbed for compilation.
-    }, skip: 'rewritten against PeerBundleStateDao in T3.1');
+  // Bundle-exchange state tests (markBundleSent, markPeerBundleReceived,
+  // clearBundleSent, mark-on-missing-row) were moved to
+  // test/data/peer_bundle_state_dao_test.dart in T3.1 and are fully covered
+  // there. They have been removed from this file to avoid duplication.
 
-    test('markBundleSent persists a timestamp', () async {
-      // bundleSentAt / peerBundleReceivedAt moved to PeerBundleState table.
-      // Assertions re-written in T3.1. Body stubbed for compilation.
-    }, skip: 'rewritten against PeerBundleStateDao in T3.1');
-
-    test('markPeerBundleReceived persists a timestamp', () async {
-      // bundleSentAt / peerBundleReceivedAt moved to PeerBundleState table.
-      // Assertions re-written in T3.1. Body stubbed for compilation.
-    }, skip: 'rewritten against PeerBundleStateDao in T3.1');
-
-    test('clearBundleSent resets bundleSentAt to null', () async {
-      // bundleSentAt moved to PeerBundleState table.
-      // Assertions re-written in T3.1. Body stubbed for compilation.
-    }, skip: 'rewritten against PeerBundleStateDao in T3.1');
-
-    test('getChat returns null for unknown peer', () async {
-      expect(await dao.getChat('ghost'), isNull);
-    });
-
-    test('mark* on missing chat row is a silent no-op', () async {
-      await dao.markBundleSent('ghost');
-      await dao.markPeerBundleReceived('ghost');
-      expect(await dao.getChat('ghost'), isNull);
-    }, skip: 'rewritten against PeerBundleStateDao in T3.1');
+  test('getChat returns null for unknown peer', () async {
+    expect(await dao.getChat('ghost'), isNull);
   });
 
   test('watchMessages emits ordered by lamport', () async {
-    await dao.ensureChat('peer1');
+    await dao.ensureDirectChat('peer1');
     await dao.insertMessage(MessagesCompanion.insert(
       id: 'm1',
       chatId: 'peer1',
@@ -97,5 +74,73 @@ void main() {
     ));
     final msgs = await dao.watchMessages('peer1').first;
     expect(msgs.map((m) => m.id).toList(), ['m2', 'm1']);
+  });
+
+  group('group chat methods (T3.4)', () {
+    test('insertGroupChat creates a group chat', () async {
+      final now = DateTime.utc(2026, 5, 21);
+      await dao.insertGroupChat(
+        chatId: 'g1',
+        groupName: 'Family',
+        creatorPubkeyHex: 'A',
+        createdAt: now,
+        initialOpSeq: 1,
+      );
+      final c = await dao.getChat('g1');
+      expect(c, isNotNull);
+      expect(c!.kind, 'group');
+      expect(c.groupName, 'Family');
+      expect(c.creatorPubkeyHex, 'A');
+      expect(c.lastOpSeq, 1);
+    });
+
+    test('bumpLastOpSeq updates lastOpSeq', () async {
+      final now = DateTime.utc(2026, 5, 21);
+      await dao.insertGroupChat(
+        chatId: 'g1',
+        groupName: 'Family',
+        creatorPubkeyHex: 'A',
+        createdAt: now,
+        initialOpSeq: 1,
+      );
+      await dao.bumpLastOpSeq('g1', 5);
+      expect((await dao.getChat('g1'))!.lastOpSeq, 5);
+    });
+
+    test('setLeftAt populates leftAt', () async {
+      final now = DateTime.utc(2026, 5, 21);
+      await dao.insertGroupChat(
+        chatId: 'g1',
+        groupName: 'Family',
+        creatorPubkeyHex: 'A',
+        createdAt: now,
+        initialOpSeq: 1,
+      );
+      final t = DateTime.utc(2026, 5, 22);
+      await dao.setLeftAt('g1', t);
+      expect((await dao.getChat('g1'))!.leftAt, t);
+    });
+
+    test('insertGroupChat is idempotent on duplicate chatId', () async {
+      final now = DateTime.utc(2026, 5, 21);
+      await dao.insertGroupChat(
+        chatId: 'g1',
+        groupName: 'First',
+        creatorPubkeyHex: 'A',
+        createdAt: now,
+        initialOpSeq: 1,
+      );
+      await dao.insertGroupChat(
+        chatId: 'g1',
+        groupName: 'Second',
+        creatorPubkeyHex: 'B',
+        createdAt: now,
+        initialOpSeq: 9,
+      );
+      // First insert wins (insertOrIgnore).
+      final c = await dao.getChat('g1');
+      expect(c!.groupName, 'First');
+      expect(c.creatorPubkeyHex, 'A');
+    });
   });
 }

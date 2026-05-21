@@ -91,7 +91,7 @@ Future<void> processFcmMessage(
   final db = AppDatabase();
   try {
     final dao = ChatsDao(db);
-    await dao.ensureChat(senderPubkeyHex);
+    await dao.ensureDirectChat(senderPubkeyHex);
 
     final crypto = LibsignalCryptoService(db);
     await crypto.initialize();

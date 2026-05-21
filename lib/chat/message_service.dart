@@ -64,7 +64,7 @@ class MessageService {
   /// before the first user-typed message. Idempotent.
   Future<void> openChat(String peerPubkeyHex) async {
     _log('openChat ${_short(peerPubkeyHex)}');
-    await dao.ensureChat(peerPubkeyHex);
+    await dao.ensureDirectChat(peerPubkeyHex);
     await _maybeSendOwnBundle(peerPubkeyHex);
   }
 
@@ -73,7 +73,7 @@ class MessageService {
     required String body,
   }) async {
     _log('sendText peer=${_short(peerPubkeyHex)} bodyLen=${body.length}');
-    await dao.ensureChat(peerPubkeyHex);
+    await dao.ensureDirectChat(peerPubkeyHex);
     await _maybeSendOwnBundle(peerPubkeyHex);
     await _persistOutbound(peerPubkeyHex, body);
 
@@ -209,7 +209,7 @@ class MessageService {
   Future<void> _handleDeliver(DeliverFrame frame) async {
     _log('inbound deliver from=${_short(frame.fromPubkeyHex)} '
         'envBytes=${frame.envelope.length} tag=0x${frame.envelope.isNotEmpty ? frame.envelope.first.toRadixString(16) : "??"}');
-    await dao.ensureChat(frame.fromPubkeyHex);
+    await dao.ensureDirectChat(frame.fromPubkeyHex);
     final ParsedEnvelope parsed;
     try {
       parsed = EnvelopeWire.parse(frame.envelope);

@@ -11,14 +11,45 @@ class ChatsDao extends DatabaseAccessor<AppDatabase> with _$ChatsDaoMixin {
   Stream<List<Chat>> watchChats() =>
       (select(chats)..orderBy([(c) => OrderingTerm.desc(c.lastMessageAt)])).watch();
 
-  Future<void> ensureChat(String peerPubkeyHex) async {
+  Future<void> ensureDirectChat(String peerPubkeyHex) async {
     await into(chats).insert(
       ChatsCompanion.insert(
         chatId: peerPubkeyHex,
+        kind: const Value('direct'),
         createdAt: DateTime.now(),
       ),
       mode: InsertMode.insertOrIgnore,
     );
+  }
+
+  Future<void> insertGroupChat({
+    required String chatId,
+    required String groupName,
+    required String creatorPubkeyHex,
+    required DateTime createdAt,
+    required int initialOpSeq,
+  }) async {
+    await into(chats).insert(
+      ChatsCompanion.insert(
+        chatId: chatId,
+        kind: const Value('group'),
+        groupName: Value(groupName),
+        creatorPubkeyHex: Value(creatorPubkeyHex),
+        createdAt: createdAt,
+        lastOpSeq: Value(initialOpSeq),
+      ),
+      mode: InsertMode.insertOrIgnore,
+    );
+  }
+
+  Future<void> bumpLastOpSeq(String chatId, int newSeq) async {
+    await (update(chats)..where((t) => t.chatId.equals(chatId)))
+        .write(ChatsCompanion(lastOpSeq: Value(newSeq)));
+  }
+
+  Future<void> setLeftAt(String chatId, DateTime t) async {
+    await (update(chats)..where((t2) => t2.chatId.equals(chatId)))
+        .write(ChatsCompanion(leftAt: Value(t)));
   }
 
   Future<int> bumpLamport(String chatId) async {
@@ -64,22 +95,7 @@ class ChatsDao extends DatabaseAccessor<AppDatabase> with _$ChatsDaoMixin {
     );
   }
 
-  Future<Chat?> getChat(String peerPubkeyHex) =>
-      (select(chats)..where((t) => t.chatId.equals(peerPubkeyHex)))
+  Future<Chat?> getChat(String chatId) =>
+      (select(chats)..where((t) => t.chatId.equals(chatId)))
           .getSingleOrNull();
-
-  // TODO(T3.5): re-wire via PeerBundleStateDao
-  Future<void> markBundleSent(String peerPubkeyHex, {DateTime? at}) async {
-    throw UnimplementedError('moved to PeerBundleStateDao in T3');
-  }
-
-  // TODO(T3.5): re-wire via PeerBundleStateDao
-  Future<void> markPeerBundleReceived(String peerPubkeyHex, {DateTime? at}) async {
-    throw UnimplementedError('moved to PeerBundleStateDao in T3');
-  }
-
-  // TODO(T3.5): re-wire via PeerBundleStateDao
-  Future<void> clearBundleSent(String peerPubkeyHex) async {
-    throw UnimplementedError('moved to PeerBundleStateDao in T3');
-  }
 }
