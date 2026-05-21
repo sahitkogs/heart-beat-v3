@@ -45,7 +45,7 @@ class _ChatTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pk = chat.peerPubkeyHex;
+    final pk = chat.chatId;
     final title = '${pk.substring(0, 8)}…${pk.substring(pk.length - 8)}';
     final subtitle = chat.lastMessagePreview ?? 'No messages yet';
     final trailing = chat.lastMessageAt != null
@@ -57,7 +57,7 @@ class _ChatTile extends StatelessWidget {
       trailing: Text(trailing, style: Theme.of(context).textTheme.bodySmall),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => ChatThreadScreen(peerPubkeyHex: chat.peerPubkeyHex),
+          builder: (_) => ChatThreadScreen(peerPubkeyHex: chat.chatId),
         ),
       ),
     );

@@ -99,7 +99,7 @@ Future<void> processFcmMessage(
     if (parsed.isBundle) {
       try {
         await crypto.processPeerPreKeyBundle(parsed.bundle!);
-        await dao.markPeerBundleReceived(senderPubkeyHex);
+        // TODO(T3.5): dao.markPeerBundleReceived(senderPubkeyHex) — via PeerBundleStateDao.
         _log('processed peer bundle from=${_short(senderPubkeyHex)}');
       } catch (e, st) {
         _log('process bundle FAILED from=${_short(senderPubkeyHex)} '

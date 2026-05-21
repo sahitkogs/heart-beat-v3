@@ -16,28 +16,29 @@ class Contacts extends Table {
 }
 
 class Chats extends Table {
-  TextColumn get peerPubkeyHex => text()();
+  TextColumn get chatId => text()();
+  TextColumn get kind => text().withDefault(const Constant('direct'))();
+  TextColumn get groupName => text().nullable()();
+  TextColumn get creatorPubkeyHex => text().nullable()();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get lastMessageAt => dateTime().nullable()();
   TextColumn get lastMessagePreview => text().nullable()();
-  // Bundle-exchange state (schema v4). Replaces the in-memory
-  // _bundleSentTo / _peerBundleReceived sets in MessageService so a background
-  // isolate doesn't re-send bundles on every wake.
-  DateTimeColumn get bundleSentAt => dateTime().nullable()();
-  DateTimeColumn get peerBundleReceivedAt => dateTime().nullable()();
+  DateTimeColumn get leftAt => dateTime().nullable()();
+  IntColumn get lastOpSeq => integer().withDefault(const Constant(0))();
 
   @override
-  Set<Column> get primaryKey => {peerPubkeyHex};
+  Set<Column> get primaryKey => {chatId};
 }
 
 class Messages extends Table {
   TextColumn get id => text()();
-  TextColumn get chatId => text()();                // == peerPubkeyHex
+  TextColumn get chatId => text()();
   TextColumn get senderPubkeyHex => text()();
   TextColumn get body => text()();
   IntColumn get lamport => integer()();
   DateTimeColumn get sentAt => dateTime()();
   DateTimeColumn get receivedAt => dateTime().nullable()();
+  TextColumn get kind => text().withDefault(const Constant('text'))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -110,11 +111,49 @@ class SignalPeerIdentities extends Table {
   Set<Column> get primaryKey => {peerPubkeyHex};
 }
 
+class GroupMembers extends Table {
+  TextColumn get chatId => text()();
+  TextColumn get memberPubkeyHex => text()();
+  DateTimeColumn get addedAt => dateTime()();
+  TextColumn get addedByPubkeyHex => text()();
+  DateTimeColumn get removedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {chatId, memberPubkeyHex};
+}
+
+class GroupOpsLog extends Table {
+  TextColumn get id => text()();
+  TextColumn get chatId => text()();
+  IntColumn get opSeq => integer().nullable()();
+  TextColumn get kind => text()();
+  TextColumn get targetPubkeyHex => text().nullable()();
+  TextColumn get signerPubkeyHex => text()();
+  TextColumn get signatureHex => text()();
+  DateTimeColumn get receivedAt => dateTime()();
+  BoolColumn get applied => boolean()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+class PeerBundleState extends Table {
+  TextColumn get peerPubkeyHex => text()();
+  DateTimeColumn get bundleSentAt => dateTime().nullable()();
+  DateTimeColumn get peerBundleReceivedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {peerPubkeyHex};
+}
+
 @DriftDatabase(tables: [
   Contacts,
   Chats,
   Messages,
   LamportSeq,
+  GroupMembers,
+  GroupOpsLog,
+  PeerBundleState,
   SignalIdentity,
   SignalPreKeys,
   SignalSignedPreKeys,
@@ -128,7 +167,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -148,8 +187,43 @@ class AppDatabase extends _$AppDatabase {
               await m.createTable(signalSessions);
               await m.createTable(signalPeerIdentities);
             } else if (v == 3) {
-              await m.addColumn(chats, chats.bundleSentAt);
-              await m.addColumn(chats, chats.peerBundleReceivedAt);
+              // Original 10.3 T3.3 step added these columns to the v3-shape `chats` table
+              // (which had `peer_pubkey_hex` as PK and no bundle columns). The columns are
+              // dropped again by the v==4 step's table rebuild, but they must exist in the
+              // intermediate state because v==4's INSERT INTO peer_bundle_state reads them.
+              //
+              // Done via raw SQL because the Chats Dart class has been re-shaped for v5
+              // and no longer has bundleSentAt / peerBundleReceivedAt members, so
+              // `m.addColumn(chats, chats.bundleSentAt)` won't compile here.
+              await customStatement('ALTER TABLE chats ADD COLUMN bundle_sent_at INTEGER');
+              await customStatement('ALTER TABLE chats ADD COLUMN peer_bundle_received_at INTEGER');
+            } else if (v == 4) {
+              // Atomic v4 -> v5 migration (one transaction, drift wraps onUpgrade).
+              await m.createTable(groupMembers);
+              await m.createTable(groupOpsLog);
+              await m.createTable(peerBundleState);
+
+              // Copy bundle state from chats -> peer_bundle_state.
+              await customStatement('''
+                INSERT INTO peer_bundle_state (peer_pubkey_hex, bundle_sent_at, peer_bundle_received_at)
+                SELECT peer_pubkey_hex, bundle_sent_at, peer_bundle_received_at
+                FROM chats
+              ''');
+
+              // Rebuild chats with new column shape.
+              await customStatement('ALTER TABLE chats RENAME TO chats_v4');
+              await m.createTable(chats);
+              await customStatement('''
+                INSERT INTO chats (chat_id, kind, group_name, creator_pubkey_hex, created_at,
+                                   last_message_at, last_message_preview, left_at, last_op_seq)
+                SELECT peer_pubkey_hex, 'direct', NULL, NULL, created_at,
+                       last_message_at, last_message_preview, NULL, 0
+                FROM chats_v4
+              ''');
+              await customStatement('DROP TABLE chats_v4');
+
+              // Add the kind column to messages.
+              await m.addColumn(messages, messages.kind);
             }
           }
         },

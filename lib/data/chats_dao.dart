@@ -14,7 +14,7 @@ class ChatsDao extends DatabaseAccessor<AppDatabase> with _$ChatsDaoMixin {
   Future<void> ensureChat(String peerPubkeyHex) async {
     await into(chats).insert(
       ChatsCompanion.insert(
-        peerPubkeyHex: peerPubkeyHex,
+        chatId: peerPubkeyHex,
         createdAt: DateTime.now(),
       ),
       mode: InsertMode.insertOrIgnore,
@@ -56,7 +56,7 @@ class ChatsDao extends DatabaseAccessor<AppDatabase> with _$ChatsDaoMixin {
           .watch();
 
   Future<void> updateLastMessage(String chatId, String preview, DateTime at) async {
-    await (update(chats)..where((t) => t.peerPubkeyHex.equals(chatId))).write(
+    await (update(chats)..where((t) => t.chatId.equals(chatId))).write(
       ChatsCompanion(
         lastMessageAt: Value(at),
         lastMessagePreview: Value(preview),
@@ -65,21 +65,21 @@ class ChatsDao extends DatabaseAccessor<AppDatabase> with _$ChatsDaoMixin {
   }
 
   Future<Chat?> getChat(String peerPubkeyHex) =>
-      (select(chats)..where((t) => t.peerPubkeyHex.equals(peerPubkeyHex)))
+      (select(chats)..where((t) => t.chatId.equals(peerPubkeyHex)))
           .getSingleOrNull();
 
+  // TODO(T3.5): re-wire via PeerBundleStateDao
   Future<void> markBundleSent(String peerPubkeyHex, {DateTime? at}) async {
-    await (update(chats)..where((t) => t.peerPubkeyHex.equals(peerPubkeyHex)))
-        .write(ChatsCompanion(bundleSentAt: Value(at ?? DateTime.now())));
+    throw UnimplementedError('moved to PeerBundleStateDao in T3');
   }
 
+  // TODO(T3.5): re-wire via PeerBundleStateDao
   Future<void> markPeerBundleReceived(String peerPubkeyHex, {DateTime? at}) async {
-    await (update(chats)..where((t) => t.peerPubkeyHex.equals(peerPubkeyHex)))
-        .write(ChatsCompanion(peerBundleReceivedAt: Value(at ?? DateTime.now())));
+    throw UnimplementedError('moved to PeerBundleStateDao in T3');
   }
 
+  // TODO(T3.5): re-wire via PeerBundleStateDao
   Future<void> clearBundleSent(String peerPubkeyHex) async {
-    await (update(chats)..where((t) => t.peerPubkeyHex.equals(peerPubkeyHex)))
-        .write(const ChatsCompanion(bundleSentAt: Value(null)));
+    throw UnimplementedError('moved to PeerBundleStateDao in T3');
   }
 }

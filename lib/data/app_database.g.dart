@@ -224,16 +224,46 @@ class $ChatsTable extends Chats with TableInfo<$ChatsTable, Chat> {
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
   $ChatsTable(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _peerPubkeyHexMeta = const VerificationMeta(
-    'peerPubkeyHex',
-  );
+  static const VerificationMeta _chatIdMeta = const VerificationMeta('chatId');
   @override
-  late final GeneratedColumn<String> peerPubkeyHex = GeneratedColumn<String>(
-    'peer_pubkey_hex',
+  late final GeneratedColumn<String> chatId = GeneratedColumn<String>(
+    'chat_id',
     aliasedName,
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('direct'),
+  );
+  static const VerificationMeta _groupNameMeta = const VerificationMeta(
+    'groupName',
+  );
+  @override
+  late final GeneratedColumn<String> groupName = GeneratedColumn<String>(
+    'group_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _creatorPubkeyHexMeta = const VerificationMeta(
+    'creatorPubkeyHex',
+  );
+  @override
+  late final GeneratedColumn<String> creatorPubkeyHex = GeneratedColumn<String>(
+    'creator_pubkey_hex',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
   );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
@@ -269,36 +299,38 @@ class $ChatsTable extends Chats with TableInfo<$ChatsTable, Chat> {
         type: DriftSqlType.string,
         requiredDuringInsert: false,
       );
-  static const VerificationMeta _bundleSentAtMeta = const VerificationMeta(
-    'bundleSentAt',
-  );
+  static const VerificationMeta _leftAtMeta = const VerificationMeta('leftAt');
   @override
-  late final GeneratedColumn<DateTime> bundleSentAt = GeneratedColumn<DateTime>(
-    'bundle_sent_at',
+  late final GeneratedColumn<DateTime> leftAt = GeneratedColumn<DateTime>(
+    'left_at',
     aliasedName,
     true,
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
-  static const VerificationMeta _peerBundleReceivedAtMeta =
-      const VerificationMeta('peerBundleReceivedAt');
+  static const VerificationMeta _lastOpSeqMeta = const VerificationMeta(
+    'lastOpSeq',
+  );
   @override
-  late final GeneratedColumn<DateTime> peerBundleReceivedAt =
-      GeneratedColumn<DateTime>(
-        'peer_bundle_received_at',
-        aliasedName,
-        true,
-        type: DriftSqlType.dateTime,
-        requiredDuringInsert: false,
-      );
+  late final GeneratedColumn<int> lastOpSeq = GeneratedColumn<int>(
+    'last_op_seq',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   @override
   List<GeneratedColumn> get $columns => [
-    peerPubkeyHex,
+    chatId,
+    kind,
+    groupName,
+    creatorPubkeyHex,
     createdAt,
     lastMessageAt,
     lastMessagePreview,
-    bundleSentAt,
-    peerBundleReceivedAt,
+    leftAt,
+    lastOpSeq,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -312,16 +344,34 @@ class $ChatsTable extends Chats with TableInfo<$ChatsTable, Chat> {
   }) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
-    if (data.containsKey('peer_pubkey_hex')) {
+    if (data.containsKey('chat_id')) {
       context.handle(
-        _peerPubkeyHexMeta,
-        peerPubkeyHex.isAcceptableOrUnknown(
-          data['peer_pubkey_hex']!,
-          _peerPubkeyHexMeta,
-        ),
+        _chatIdMeta,
+        chatId.isAcceptableOrUnknown(data['chat_id']!, _chatIdMeta),
       );
     } else if (isInserting) {
-      context.missing(_peerPubkeyHexMeta);
+      context.missing(_chatIdMeta);
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    }
+    if (data.containsKey('group_name')) {
+      context.handle(
+        _groupNameMeta,
+        groupName.isAcceptableOrUnknown(data['group_name']!, _groupNameMeta),
+      );
+    }
+    if (data.containsKey('creator_pubkey_hex')) {
+      context.handle(
+        _creatorPubkeyHexMeta,
+        creatorPubkeyHex.isAcceptableOrUnknown(
+          data['creator_pubkey_hex']!,
+          _creatorPubkeyHexMeta,
+        ),
+      );
     }
     if (data.containsKey('created_at')) {
       context.handle(
@@ -349,37 +399,43 @@ class $ChatsTable extends Chats with TableInfo<$ChatsTable, Chat> {
         ),
       );
     }
-    if (data.containsKey('bundle_sent_at')) {
+    if (data.containsKey('left_at')) {
       context.handle(
-        _bundleSentAtMeta,
-        bundleSentAt.isAcceptableOrUnknown(
-          data['bundle_sent_at']!,
-          _bundleSentAtMeta,
-        ),
+        _leftAtMeta,
+        leftAt.isAcceptableOrUnknown(data['left_at']!, _leftAtMeta),
       );
     }
-    if (data.containsKey('peer_bundle_received_at')) {
+    if (data.containsKey('last_op_seq')) {
       context.handle(
-        _peerBundleReceivedAtMeta,
-        peerBundleReceivedAt.isAcceptableOrUnknown(
-          data['peer_bundle_received_at']!,
-          _peerBundleReceivedAtMeta,
-        ),
+        _lastOpSeqMeta,
+        lastOpSeq.isAcceptableOrUnknown(data['last_op_seq']!, _lastOpSeqMeta),
       );
     }
     return context;
   }
 
   @override
-  Set<GeneratedColumn> get $primaryKey => {peerPubkeyHex};
+  Set<GeneratedColumn> get $primaryKey => {chatId};
   @override
   Chat map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return Chat(
-      peerPubkeyHex: attachedDatabase.typeMapping.read(
+      chatId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
-        data['${effectivePrefix}peer_pubkey_hex'],
+        data['${effectivePrefix}chat_id'],
       )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      groupName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}group_name'],
+      ),
+      creatorPubkeyHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}creator_pubkey_hex'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -392,14 +448,14 @@ class $ChatsTable extends Chats with TableInfo<$ChatsTable, Chat> {
         DriftSqlType.string,
         data['${effectivePrefix}last_message_preview'],
       ),
-      bundleSentAt: attachedDatabase.typeMapping.read(
+      leftAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
-        data['${effectivePrefix}bundle_sent_at'],
+        data['${effectivePrefix}left_at'],
       ),
-      peerBundleReceivedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
-        data['${effectivePrefix}peer_bundle_received_at'],
-      ),
+      lastOpSeq: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}last_op_seq'],
+      )!,
     );
   }
 
@@ -410,24 +466,37 @@ class $ChatsTable extends Chats with TableInfo<$ChatsTable, Chat> {
 }
 
 class Chat extends DataClass implements Insertable<Chat> {
-  final String peerPubkeyHex;
+  final String chatId;
+  final String kind;
+  final String? groupName;
+  final String? creatorPubkeyHex;
   final DateTime createdAt;
   final DateTime? lastMessageAt;
   final String? lastMessagePreview;
-  final DateTime? bundleSentAt;
-  final DateTime? peerBundleReceivedAt;
+  final DateTime? leftAt;
+  final int lastOpSeq;
   const Chat({
-    required this.peerPubkeyHex,
+    required this.chatId,
+    required this.kind,
+    this.groupName,
+    this.creatorPubkeyHex,
     required this.createdAt,
     this.lastMessageAt,
     this.lastMessagePreview,
-    this.bundleSentAt,
-    this.peerBundleReceivedAt,
+    this.leftAt,
+    required this.lastOpSeq,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    map['peer_pubkey_hex'] = Variable<String>(peerPubkeyHex);
+    map['chat_id'] = Variable<String>(chatId);
+    map['kind'] = Variable<String>(kind);
+    if (!nullToAbsent || groupName != null) {
+      map['group_name'] = Variable<String>(groupName);
+    }
+    if (!nullToAbsent || creatorPubkeyHex != null) {
+      map['creator_pubkey_hex'] = Variable<String>(creatorPubkeyHex);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     if (!nullToAbsent || lastMessageAt != null) {
       map['last_message_at'] = Variable<DateTime>(lastMessageAt);
@@ -435,18 +504,23 @@ class Chat extends DataClass implements Insertable<Chat> {
     if (!nullToAbsent || lastMessagePreview != null) {
       map['last_message_preview'] = Variable<String>(lastMessagePreview);
     }
-    if (!nullToAbsent || bundleSentAt != null) {
-      map['bundle_sent_at'] = Variable<DateTime>(bundleSentAt);
+    if (!nullToAbsent || leftAt != null) {
+      map['left_at'] = Variable<DateTime>(leftAt);
     }
-    if (!nullToAbsent || peerBundleReceivedAt != null) {
-      map['peer_bundle_received_at'] = Variable<DateTime>(peerBundleReceivedAt);
-    }
+    map['last_op_seq'] = Variable<int>(lastOpSeq);
     return map;
   }
 
   ChatsCompanion toCompanion(bool nullToAbsent) {
     return ChatsCompanion(
-      peerPubkeyHex: Value(peerPubkeyHex),
+      chatId: Value(chatId),
+      kind: Value(kind),
+      groupName: groupName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(groupName),
+      creatorPubkeyHex: creatorPubkeyHex == null && nullToAbsent
+          ? const Value.absent()
+          : Value(creatorPubkeyHex),
       createdAt: Value(createdAt),
       lastMessageAt: lastMessageAt == null && nullToAbsent
           ? const Value.absent()
@@ -454,12 +528,10 @@ class Chat extends DataClass implements Insertable<Chat> {
       lastMessagePreview: lastMessagePreview == null && nullToAbsent
           ? const Value.absent()
           : Value(lastMessagePreview),
-      bundleSentAt: bundleSentAt == null && nullToAbsent
+      leftAt: leftAt == null && nullToAbsent
           ? const Value.absent()
-          : Value(bundleSentAt),
-      peerBundleReceivedAt: peerBundleReceivedAt == null && nullToAbsent
-          ? const Value.absent()
-          : Value(peerBundleReceivedAt),
+          : Value(leftAt),
+      lastOpSeq: Value(lastOpSeq),
     );
   }
 
@@ -469,42 +541,52 @@ class Chat extends DataClass implements Insertable<Chat> {
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return Chat(
-      peerPubkeyHex: serializer.fromJson<String>(json['peerPubkeyHex']),
+      chatId: serializer.fromJson<String>(json['chatId']),
+      kind: serializer.fromJson<String>(json['kind']),
+      groupName: serializer.fromJson<String?>(json['groupName']),
+      creatorPubkeyHex: serializer.fromJson<String?>(json['creatorPubkeyHex']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       lastMessageAt: serializer.fromJson<DateTime?>(json['lastMessageAt']),
       lastMessagePreview: serializer.fromJson<String?>(
         json['lastMessagePreview'],
       ),
-      bundleSentAt: serializer.fromJson<DateTime?>(json['bundleSentAt']),
-      peerBundleReceivedAt: serializer.fromJson<DateTime?>(
-        json['peerBundleReceivedAt'],
-      ),
+      leftAt: serializer.fromJson<DateTime?>(json['leftAt']),
+      lastOpSeq: serializer.fromJson<int>(json['lastOpSeq']),
     );
   }
   @override
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
-      'peerPubkeyHex': serializer.toJson<String>(peerPubkeyHex),
+      'chatId': serializer.toJson<String>(chatId),
+      'kind': serializer.toJson<String>(kind),
+      'groupName': serializer.toJson<String?>(groupName),
+      'creatorPubkeyHex': serializer.toJson<String?>(creatorPubkeyHex),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'lastMessageAt': serializer.toJson<DateTime?>(lastMessageAt),
       'lastMessagePreview': serializer.toJson<String?>(lastMessagePreview),
-      'bundleSentAt': serializer.toJson<DateTime?>(bundleSentAt),
-      'peerBundleReceivedAt': serializer.toJson<DateTime?>(
-        peerBundleReceivedAt,
-      ),
+      'leftAt': serializer.toJson<DateTime?>(leftAt),
+      'lastOpSeq': serializer.toJson<int>(lastOpSeq),
     };
   }
 
   Chat copyWith({
-    String? peerPubkeyHex,
+    String? chatId,
+    String? kind,
+    Value<String?> groupName = const Value.absent(),
+    Value<String?> creatorPubkeyHex = const Value.absent(),
     DateTime? createdAt,
     Value<DateTime?> lastMessageAt = const Value.absent(),
     Value<String?> lastMessagePreview = const Value.absent(),
-    Value<DateTime?> bundleSentAt = const Value.absent(),
-    Value<DateTime?> peerBundleReceivedAt = const Value.absent(),
+    Value<DateTime?> leftAt = const Value.absent(),
+    int? lastOpSeq,
   }) => Chat(
-    peerPubkeyHex: peerPubkeyHex ?? this.peerPubkeyHex,
+    chatId: chatId ?? this.chatId,
+    kind: kind ?? this.kind,
+    groupName: groupName.present ? groupName.value : this.groupName,
+    creatorPubkeyHex: creatorPubkeyHex.present
+        ? creatorPubkeyHex.value
+        : this.creatorPubkeyHex,
     createdAt: createdAt ?? this.createdAt,
     lastMessageAt: lastMessageAt.present
         ? lastMessageAt.value
@@ -512,16 +594,17 @@ class Chat extends DataClass implements Insertable<Chat> {
     lastMessagePreview: lastMessagePreview.present
         ? lastMessagePreview.value
         : this.lastMessagePreview,
-    bundleSentAt: bundleSentAt.present ? bundleSentAt.value : this.bundleSentAt,
-    peerBundleReceivedAt: peerBundleReceivedAt.present
-        ? peerBundleReceivedAt.value
-        : this.peerBundleReceivedAt,
+    leftAt: leftAt.present ? leftAt.value : this.leftAt,
+    lastOpSeq: lastOpSeq ?? this.lastOpSeq,
   );
   Chat copyWithCompanion(ChatsCompanion data) {
     return Chat(
-      peerPubkeyHex: data.peerPubkeyHex.present
-          ? data.peerPubkeyHex.value
-          : this.peerPubkeyHex,
+      chatId: data.chatId.present ? data.chatId.value : this.chatId,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      groupName: data.groupName.present ? data.groupName.value : this.groupName,
+      creatorPubkeyHex: data.creatorPubkeyHex.present
+          ? data.creatorPubkeyHex.value
+          : this.creatorPubkeyHex,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       lastMessageAt: data.lastMessageAt.present
           ? data.lastMessageAt.value
@@ -529,114 +612,139 @@ class Chat extends DataClass implements Insertable<Chat> {
       lastMessagePreview: data.lastMessagePreview.present
           ? data.lastMessagePreview.value
           : this.lastMessagePreview,
-      bundleSentAt: data.bundleSentAt.present
-          ? data.bundleSentAt.value
-          : this.bundleSentAt,
-      peerBundleReceivedAt: data.peerBundleReceivedAt.present
-          ? data.peerBundleReceivedAt.value
-          : this.peerBundleReceivedAt,
+      leftAt: data.leftAt.present ? data.leftAt.value : this.leftAt,
+      lastOpSeq: data.lastOpSeq.present ? data.lastOpSeq.value : this.lastOpSeq,
     );
   }
 
   @override
   String toString() {
     return (StringBuffer('Chat(')
-          ..write('peerPubkeyHex: $peerPubkeyHex, ')
+          ..write('chatId: $chatId, ')
+          ..write('kind: $kind, ')
+          ..write('groupName: $groupName, ')
+          ..write('creatorPubkeyHex: $creatorPubkeyHex, ')
           ..write('createdAt: $createdAt, ')
           ..write('lastMessageAt: $lastMessageAt, ')
           ..write('lastMessagePreview: $lastMessagePreview, ')
-          ..write('bundleSentAt: $bundleSentAt, ')
-          ..write('peerBundleReceivedAt: $peerBundleReceivedAt')
+          ..write('leftAt: $leftAt, ')
+          ..write('lastOpSeq: $lastOpSeq')
           ..write(')'))
         .toString();
   }
 
   @override
   int get hashCode => Object.hash(
-    peerPubkeyHex,
+    chatId,
+    kind,
+    groupName,
+    creatorPubkeyHex,
     createdAt,
     lastMessageAt,
     lastMessagePreview,
-    bundleSentAt,
-    peerBundleReceivedAt,
+    leftAt,
+    lastOpSeq,
   );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Chat &&
-          other.peerPubkeyHex == this.peerPubkeyHex &&
+          other.chatId == this.chatId &&
+          other.kind == this.kind &&
+          other.groupName == this.groupName &&
+          other.creatorPubkeyHex == this.creatorPubkeyHex &&
           other.createdAt == this.createdAt &&
           other.lastMessageAt == this.lastMessageAt &&
           other.lastMessagePreview == this.lastMessagePreview &&
-          other.bundleSentAt == this.bundleSentAt &&
-          other.peerBundleReceivedAt == this.peerBundleReceivedAt);
+          other.leftAt == this.leftAt &&
+          other.lastOpSeq == this.lastOpSeq);
 }
 
 class ChatsCompanion extends UpdateCompanion<Chat> {
-  final Value<String> peerPubkeyHex;
+  final Value<String> chatId;
+  final Value<String> kind;
+  final Value<String?> groupName;
+  final Value<String?> creatorPubkeyHex;
   final Value<DateTime> createdAt;
   final Value<DateTime?> lastMessageAt;
   final Value<String?> lastMessagePreview;
-  final Value<DateTime?> bundleSentAt;
-  final Value<DateTime?> peerBundleReceivedAt;
+  final Value<DateTime?> leftAt;
+  final Value<int> lastOpSeq;
   final Value<int> rowid;
   const ChatsCompanion({
-    this.peerPubkeyHex = const Value.absent(),
+    this.chatId = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.groupName = const Value.absent(),
+    this.creatorPubkeyHex = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.lastMessageAt = const Value.absent(),
     this.lastMessagePreview = const Value.absent(),
-    this.bundleSentAt = const Value.absent(),
-    this.peerBundleReceivedAt = const Value.absent(),
+    this.leftAt = const Value.absent(),
+    this.lastOpSeq = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ChatsCompanion.insert({
-    required String peerPubkeyHex,
+    required String chatId,
+    this.kind = const Value.absent(),
+    this.groupName = const Value.absent(),
+    this.creatorPubkeyHex = const Value.absent(),
     required DateTime createdAt,
     this.lastMessageAt = const Value.absent(),
     this.lastMessagePreview = const Value.absent(),
-    this.bundleSentAt = const Value.absent(),
-    this.peerBundleReceivedAt = const Value.absent(),
+    this.leftAt = const Value.absent(),
+    this.lastOpSeq = const Value.absent(),
     this.rowid = const Value.absent(),
-  }) : peerPubkeyHex = Value(peerPubkeyHex),
+  }) : chatId = Value(chatId),
        createdAt = Value(createdAt);
   static Insertable<Chat> custom({
-    Expression<String>? peerPubkeyHex,
+    Expression<String>? chatId,
+    Expression<String>? kind,
+    Expression<String>? groupName,
+    Expression<String>? creatorPubkeyHex,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? lastMessageAt,
     Expression<String>? lastMessagePreview,
-    Expression<DateTime>? bundleSentAt,
-    Expression<DateTime>? peerBundleReceivedAt,
+    Expression<DateTime>? leftAt,
+    Expression<int>? lastOpSeq,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
-      if (peerPubkeyHex != null) 'peer_pubkey_hex': peerPubkeyHex,
+      if (chatId != null) 'chat_id': chatId,
+      if (kind != null) 'kind': kind,
+      if (groupName != null) 'group_name': groupName,
+      if (creatorPubkeyHex != null) 'creator_pubkey_hex': creatorPubkeyHex,
       if (createdAt != null) 'created_at': createdAt,
       if (lastMessageAt != null) 'last_message_at': lastMessageAt,
       if (lastMessagePreview != null)
         'last_message_preview': lastMessagePreview,
-      if (bundleSentAt != null) 'bundle_sent_at': bundleSentAt,
-      if (peerBundleReceivedAt != null)
-        'peer_bundle_received_at': peerBundleReceivedAt,
+      if (leftAt != null) 'left_at': leftAt,
+      if (lastOpSeq != null) 'last_op_seq': lastOpSeq,
       if (rowid != null) 'rowid': rowid,
     });
   }
 
   ChatsCompanion copyWith({
-    Value<String>? peerPubkeyHex,
+    Value<String>? chatId,
+    Value<String>? kind,
+    Value<String?>? groupName,
+    Value<String?>? creatorPubkeyHex,
     Value<DateTime>? createdAt,
     Value<DateTime?>? lastMessageAt,
     Value<String?>? lastMessagePreview,
-    Value<DateTime?>? bundleSentAt,
-    Value<DateTime?>? peerBundleReceivedAt,
+    Value<DateTime?>? leftAt,
+    Value<int>? lastOpSeq,
     Value<int>? rowid,
   }) {
     return ChatsCompanion(
-      peerPubkeyHex: peerPubkeyHex ?? this.peerPubkeyHex,
+      chatId: chatId ?? this.chatId,
+      kind: kind ?? this.kind,
+      groupName: groupName ?? this.groupName,
+      creatorPubkeyHex: creatorPubkeyHex ?? this.creatorPubkeyHex,
       createdAt: createdAt ?? this.createdAt,
       lastMessageAt: lastMessageAt ?? this.lastMessageAt,
       lastMessagePreview: lastMessagePreview ?? this.lastMessagePreview,
-      bundleSentAt: bundleSentAt ?? this.bundleSentAt,
-      peerBundleReceivedAt: peerBundleReceivedAt ?? this.peerBundleReceivedAt,
+      leftAt: leftAt ?? this.leftAt,
+      lastOpSeq: lastOpSeq ?? this.lastOpSeq,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -644,8 +752,17 @@ class ChatsCompanion extends UpdateCompanion<Chat> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    if (peerPubkeyHex.present) {
-      map['peer_pubkey_hex'] = Variable<String>(peerPubkeyHex.value);
+    if (chatId.present) {
+      map['chat_id'] = Variable<String>(chatId.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (groupName.present) {
+      map['group_name'] = Variable<String>(groupName.value);
+    }
+    if (creatorPubkeyHex.present) {
+      map['creator_pubkey_hex'] = Variable<String>(creatorPubkeyHex.value);
     }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
@@ -656,13 +773,11 @@ class ChatsCompanion extends UpdateCompanion<Chat> {
     if (lastMessagePreview.present) {
       map['last_message_preview'] = Variable<String>(lastMessagePreview.value);
     }
-    if (bundleSentAt.present) {
-      map['bundle_sent_at'] = Variable<DateTime>(bundleSentAt.value);
+    if (leftAt.present) {
+      map['left_at'] = Variable<DateTime>(leftAt.value);
     }
-    if (peerBundleReceivedAt.present) {
-      map['peer_bundle_received_at'] = Variable<DateTime>(
-        peerBundleReceivedAt.value,
-      );
+    if (lastOpSeq.present) {
+      map['last_op_seq'] = Variable<int>(lastOpSeq.value);
     }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
@@ -673,12 +788,15 @@ class ChatsCompanion extends UpdateCompanion<Chat> {
   @override
   String toString() {
     return (StringBuffer('ChatsCompanion(')
-          ..write('peerPubkeyHex: $peerPubkeyHex, ')
+          ..write('chatId: $chatId, ')
+          ..write('kind: $kind, ')
+          ..write('groupName: $groupName, ')
+          ..write('creatorPubkeyHex: $creatorPubkeyHex, ')
           ..write('createdAt: $createdAt, ')
           ..write('lastMessageAt: $lastMessageAt, ')
           ..write('lastMessagePreview: $lastMessagePreview, ')
-          ..write('bundleSentAt: $bundleSentAt, ')
-          ..write('peerBundleReceivedAt: $peerBundleReceivedAt, ')
+          ..write('leftAt: $leftAt, ')
+          ..write('lastOpSeq: $lastOpSeq, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -759,6 +877,16 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('text'),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -768,6 +896,7 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
     lamport,
     sentAt,
     receivedAt,
+    kind,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -835,6 +964,12 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
         receivedAt.isAcceptableOrUnknown(data['received_at']!, _receivedAtMeta),
       );
     }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    }
     return context;
   }
 
@@ -872,6 +1007,10 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}received_at'],
       ),
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
     );
   }
 
@@ -889,6 +1028,7 @@ class Message extends DataClass implements Insertable<Message> {
   final int lamport;
   final DateTime sentAt;
   final DateTime? receivedAt;
+  final String kind;
   const Message({
     required this.id,
     required this.chatId,
@@ -897,6 +1037,7 @@ class Message extends DataClass implements Insertable<Message> {
     required this.lamport,
     required this.sentAt,
     this.receivedAt,
+    required this.kind,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -910,6 +1051,7 @@ class Message extends DataClass implements Insertable<Message> {
     if (!nullToAbsent || receivedAt != null) {
       map['received_at'] = Variable<DateTime>(receivedAt);
     }
+    map['kind'] = Variable<String>(kind);
     return map;
   }
 
@@ -924,6 +1066,7 @@ class Message extends DataClass implements Insertable<Message> {
       receivedAt: receivedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(receivedAt),
+      kind: Value(kind),
     );
   }
 
@@ -940,6 +1083,7 @@ class Message extends DataClass implements Insertable<Message> {
       lamport: serializer.fromJson<int>(json['lamport']),
       sentAt: serializer.fromJson<DateTime>(json['sentAt']),
       receivedAt: serializer.fromJson<DateTime?>(json['receivedAt']),
+      kind: serializer.fromJson<String>(json['kind']),
     );
   }
   @override
@@ -953,6 +1097,7 @@ class Message extends DataClass implements Insertable<Message> {
       'lamport': serializer.toJson<int>(lamport),
       'sentAt': serializer.toJson<DateTime>(sentAt),
       'receivedAt': serializer.toJson<DateTime?>(receivedAt),
+      'kind': serializer.toJson<String>(kind),
     };
   }
 
@@ -964,6 +1109,7 @@ class Message extends DataClass implements Insertable<Message> {
     int? lamport,
     DateTime? sentAt,
     Value<DateTime?> receivedAt = const Value.absent(),
+    String? kind,
   }) => Message(
     id: id ?? this.id,
     chatId: chatId ?? this.chatId,
@@ -972,6 +1118,7 @@ class Message extends DataClass implements Insertable<Message> {
     lamport: lamport ?? this.lamport,
     sentAt: sentAt ?? this.sentAt,
     receivedAt: receivedAt.present ? receivedAt.value : this.receivedAt,
+    kind: kind ?? this.kind,
   );
   Message copyWithCompanion(MessagesCompanion data) {
     return Message(
@@ -986,6 +1133,7 @@ class Message extends DataClass implements Insertable<Message> {
       receivedAt: data.receivedAt.present
           ? data.receivedAt.value
           : this.receivedAt,
+      kind: data.kind.present ? data.kind.value : this.kind,
     );
   }
 
@@ -998,7 +1146,8 @@ class Message extends DataClass implements Insertable<Message> {
           ..write('body: $body, ')
           ..write('lamport: $lamport, ')
           ..write('sentAt: $sentAt, ')
-          ..write('receivedAt: $receivedAt')
+          ..write('receivedAt: $receivedAt, ')
+          ..write('kind: $kind')
           ..write(')'))
         .toString();
   }
@@ -1012,6 +1161,7 @@ class Message extends DataClass implements Insertable<Message> {
     lamport,
     sentAt,
     receivedAt,
+    kind,
   );
   @override
   bool operator ==(Object other) =>
@@ -1023,7 +1173,8 @@ class Message extends DataClass implements Insertable<Message> {
           other.body == this.body &&
           other.lamport == this.lamport &&
           other.sentAt == this.sentAt &&
-          other.receivedAt == this.receivedAt);
+          other.receivedAt == this.receivedAt &&
+          other.kind == this.kind);
 }
 
 class MessagesCompanion extends UpdateCompanion<Message> {
@@ -1034,6 +1185,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
   final Value<int> lamport;
   final Value<DateTime> sentAt;
   final Value<DateTime?> receivedAt;
+  final Value<String> kind;
   final Value<int> rowid;
   const MessagesCompanion({
     this.id = const Value.absent(),
@@ -1043,6 +1195,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     this.lamport = const Value.absent(),
     this.sentAt = const Value.absent(),
     this.receivedAt = const Value.absent(),
+    this.kind = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   MessagesCompanion.insert({
@@ -1053,6 +1206,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     required int lamport,
     required DateTime sentAt,
     this.receivedAt = const Value.absent(),
+    this.kind = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        chatId = Value(chatId),
@@ -1068,6 +1222,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     Expression<int>? lamport,
     Expression<DateTime>? sentAt,
     Expression<DateTime>? receivedAt,
+    Expression<String>? kind,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1078,6 +1233,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
       if (lamport != null) 'lamport': lamport,
       if (sentAt != null) 'sent_at': sentAt,
       if (receivedAt != null) 'received_at': receivedAt,
+      if (kind != null) 'kind': kind,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1090,6 +1246,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     Value<int>? lamport,
     Value<DateTime>? sentAt,
     Value<DateTime?>? receivedAt,
+    Value<String>? kind,
     Value<int>? rowid,
   }) {
     return MessagesCompanion(
@@ -1100,6 +1257,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
       lamport: lamport ?? this.lamport,
       sentAt: sentAt ?? this.sentAt,
       receivedAt: receivedAt ?? this.receivedAt,
+      kind: kind ?? this.kind,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1128,6 +1286,9 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     if (receivedAt.present) {
       map['received_at'] = Variable<DateTime>(receivedAt.value);
     }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1144,6 +1305,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
           ..write('lamport: $lamport, ')
           ..write('sentAt: $sentAt, ')
           ..write('receivedAt: $receivedAt, ')
+          ..write('kind: $kind, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1352,6 +1514,1267 @@ class LamportSeqCompanion extends UpdateCompanion<LamportSeqData> {
     return (StringBuffer('LamportSeqCompanion(')
           ..write('chatId: $chatId, ')
           ..write('value: $value, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $GroupMembersTable extends GroupMembers
+    with TableInfo<$GroupMembersTable, GroupMember> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $GroupMembersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _chatIdMeta = const VerificationMeta('chatId');
+  @override
+  late final GeneratedColumn<String> chatId = GeneratedColumn<String>(
+    'chat_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _memberPubkeyHexMeta = const VerificationMeta(
+    'memberPubkeyHex',
+  );
+  @override
+  late final GeneratedColumn<String> memberPubkeyHex = GeneratedColumn<String>(
+    'member_pubkey_hex',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _addedAtMeta = const VerificationMeta(
+    'addedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> addedAt = GeneratedColumn<DateTime>(
+    'added_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _addedByPubkeyHexMeta = const VerificationMeta(
+    'addedByPubkeyHex',
+  );
+  @override
+  late final GeneratedColumn<String> addedByPubkeyHex = GeneratedColumn<String>(
+    'added_by_pubkey_hex',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _removedAtMeta = const VerificationMeta(
+    'removedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> removedAt = GeneratedColumn<DateTime>(
+    'removed_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    chatId,
+    memberPubkeyHex,
+    addedAt,
+    addedByPubkeyHex,
+    removedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'group_members';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<GroupMember> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('chat_id')) {
+      context.handle(
+        _chatIdMeta,
+        chatId.isAcceptableOrUnknown(data['chat_id']!, _chatIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_chatIdMeta);
+    }
+    if (data.containsKey('member_pubkey_hex')) {
+      context.handle(
+        _memberPubkeyHexMeta,
+        memberPubkeyHex.isAcceptableOrUnknown(
+          data['member_pubkey_hex']!,
+          _memberPubkeyHexMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_memberPubkeyHexMeta);
+    }
+    if (data.containsKey('added_at')) {
+      context.handle(
+        _addedAtMeta,
+        addedAt.isAcceptableOrUnknown(data['added_at']!, _addedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_addedAtMeta);
+    }
+    if (data.containsKey('added_by_pubkey_hex')) {
+      context.handle(
+        _addedByPubkeyHexMeta,
+        addedByPubkeyHex.isAcceptableOrUnknown(
+          data['added_by_pubkey_hex']!,
+          _addedByPubkeyHexMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_addedByPubkeyHexMeta);
+    }
+    if (data.containsKey('removed_at')) {
+      context.handle(
+        _removedAtMeta,
+        removedAt.isAcceptableOrUnknown(data['removed_at']!, _removedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {chatId, memberPubkeyHex};
+  @override
+  GroupMember map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return GroupMember(
+      chatId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}chat_id'],
+      )!,
+      memberPubkeyHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}member_pubkey_hex'],
+      )!,
+      addedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}added_at'],
+      )!,
+      addedByPubkeyHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}added_by_pubkey_hex'],
+      )!,
+      removedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}removed_at'],
+      ),
+    );
+  }
+
+  @override
+  $GroupMembersTable createAlias(String alias) {
+    return $GroupMembersTable(attachedDatabase, alias);
+  }
+}
+
+class GroupMember extends DataClass implements Insertable<GroupMember> {
+  final String chatId;
+  final String memberPubkeyHex;
+  final DateTime addedAt;
+  final String addedByPubkeyHex;
+  final DateTime? removedAt;
+  const GroupMember({
+    required this.chatId,
+    required this.memberPubkeyHex,
+    required this.addedAt,
+    required this.addedByPubkeyHex,
+    this.removedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['chat_id'] = Variable<String>(chatId);
+    map['member_pubkey_hex'] = Variable<String>(memberPubkeyHex);
+    map['added_at'] = Variable<DateTime>(addedAt);
+    map['added_by_pubkey_hex'] = Variable<String>(addedByPubkeyHex);
+    if (!nullToAbsent || removedAt != null) {
+      map['removed_at'] = Variable<DateTime>(removedAt);
+    }
+    return map;
+  }
+
+  GroupMembersCompanion toCompanion(bool nullToAbsent) {
+    return GroupMembersCompanion(
+      chatId: Value(chatId),
+      memberPubkeyHex: Value(memberPubkeyHex),
+      addedAt: Value(addedAt),
+      addedByPubkeyHex: Value(addedByPubkeyHex),
+      removedAt: removedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(removedAt),
+    );
+  }
+
+  factory GroupMember.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return GroupMember(
+      chatId: serializer.fromJson<String>(json['chatId']),
+      memberPubkeyHex: serializer.fromJson<String>(json['memberPubkeyHex']),
+      addedAt: serializer.fromJson<DateTime>(json['addedAt']),
+      addedByPubkeyHex: serializer.fromJson<String>(json['addedByPubkeyHex']),
+      removedAt: serializer.fromJson<DateTime?>(json['removedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'chatId': serializer.toJson<String>(chatId),
+      'memberPubkeyHex': serializer.toJson<String>(memberPubkeyHex),
+      'addedAt': serializer.toJson<DateTime>(addedAt),
+      'addedByPubkeyHex': serializer.toJson<String>(addedByPubkeyHex),
+      'removedAt': serializer.toJson<DateTime?>(removedAt),
+    };
+  }
+
+  GroupMember copyWith({
+    String? chatId,
+    String? memberPubkeyHex,
+    DateTime? addedAt,
+    String? addedByPubkeyHex,
+    Value<DateTime?> removedAt = const Value.absent(),
+  }) => GroupMember(
+    chatId: chatId ?? this.chatId,
+    memberPubkeyHex: memberPubkeyHex ?? this.memberPubkeyHex,
+    addedAt: addedAt ?? this.addedAt,
+    addedByPubkeyHex: addedByPubkeyHex ?? this.addedByPubkeyHex,
+    removedAt: removedAt.present ? removedAt.value : this.removedAt,
+  );
+  GroupMember copyWithCompanion(GroupMembersCompanion data) {
+    return GroupMember(
+      chatId: data.chatId.present ? data.chatId.value : this.chatId,
+      memberPubkeyHex: data.memberPubkeyHex.present
+          ? data.memberPubkeyHex.value
+          : this.memberPubkeyHex,
+      addedAt: data.addedAt.present ? data.addedAt.value : this.addedAt,
+      addedByPubkeyHex: data.addedByPubkeyHex.present
+          ? data.addedByPubkeyHex.value
+          : this.addedByPubkeyHex,
+      removedAt: data.removedAt.present ? data.removedAt.value : this.removedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GroupMember(')
+          ..write('chatId: $chatId, ')
+          ..write('memberPubkeyHex: $memberPubkeyHex, ')
+          ..write('addedAt: $addedAt, ')
+          ..write('addedByPubkeyHex: $addedByPubkeyHex, ')
+          ..write('removedAt: $removedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    chatId,
+    memberPubkeyHex,
+    addedAt,
+    addedByPubkeyHex,
+    removedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is GroupMember &&
+          other.chatId == this.chatId &&
+          other.memberPubkeyHex == this.memberPubkeyHex &&
+          other.addedAt == this.addedAt &&
+          other.addedByPubkeyHex == this.addedByPubkeyHex &&
+          other.removedAt == this.removedAt);
+}
+
+class GroupMembersCompanion extends UpdateCompanion<GroupMember> {
+  final Value<String> chatId;
+  final Value<String> memberPubkeyHex;
+  final Value<DateTime> addedAt;
+  final Value<String> addedByPubkeyHex;
+  final Value<DateTime?> removedAt;
+  final Value<int> rowid;
+  const GroupMembersCompanion({
+    this.chatId = const Value.absent(),
+    this.memberPubkeyHex = const Value.absent(),
+    this.addedAt = const Value.absent(),
+    this.addedByPubkeyHex = const Value.absent(),
+    this.removedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  GroupMembersCompanion.insert({
+    required String chatId,
+    required String memberPubkeyHex,
+    required DateTime addedAt,
+    required String addedByPubkeyHex,
+    this.removedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : chatId = Value(chatId),
+       memberPubkeyHex = Value(memberPubkeyHex),
+       addedAt = Value(addedAt),
+       addedByPubkeyHex = Value(addedByPubkeyHex);
+  static Insertable<GroupMember> custom({
+    Expression<String>? chatId,
+    Expression<String>? memberPubkeyHex,
+    Expression<DateTime>? addedAt,
+    Expression<String>? addedByPubkeyHex,
+    Expression<DateTime>? removedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (chatId != null) 'chat_id': chatId,
+      if (memberPubkeyHex != null) 'member_pubkey_hex': memberPubkeyHex,
+      if (addedAt != null) 'added_at': addedAt,
+      if (addedByPubkeyHex != null) 'added_by_pubkey_hex': addedByPubkeyHex,
+      if (removedAt != null) 'removed_at': removedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  GroupMembersCompanion copyWith({
+    Value<String>? chatId,
+    Value<String>? memberPubkeyHex,
+    Value<DateTime>? addedAt,
+    Value<String>? addedByPubkeyHex,
+    Value<DateTime?>? removedAt,
+    Value<int>? rowid,
+  }) {
+    return GroupMembersCompanion(
+      chatId: chatId ?? this.chatId,
+      memberPubkeyHex: memberPubkeyHex ?? this.memberPubkeyHex,
+      addedAt: addedAt ?? this.addedAt,
+      addedByPubkeyHex: addedByPubkeyHex ?? this.addedByPubkeyHex,
+      removedAt: removedAt ?? this.removedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (chatId.present) {
+      map['chat_id'] = Variable<String>(chatId.value);
+    }
+    if (memberPubkeyHex.present) {
+      map['member_pubkey_hex'] = Variable<String>(memberPubkeyHex.value);
+    }
+    if (addedAt.present) {
+      map['added_at'] = Variable<DateTime>(addedAt.value);
+    }
+    if (addedByPubkeyHex.present) {
+      map['added_by_pubkey_hex'] = Variable<String>(addedByPubkeyHex.value);
+    }
+    if (removedAt.present) {
+      map['removed_at'] = Variable<DateTime>(removedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GroupMembersCompanion(')
+          ..write('chatId: $chatId, ')
+          ..write('memberPubkeyHex: $memberPubkeyHex, ')
+          ..write('addedAt: $addedAt, ')
+          ..write('addedByPubkeyHex: $addedByPubkeyHex, ')
+          ..write('removedAt: $removedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $GroupOpsLogTable extends GroupOpsLog
+    with TableInfo<$GroupOpsLogTable, GroupOpsLogData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $GroupOpsLogTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _chatIdMeta = const VerificationMeta('chatId');
+  @override
+  late final GeneratedColumn<String> chatId = GeneratedColumn<String>(
+    'chat_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _opSeqMeta = const VerificationMeta('opSeq');
+  @override
+  late final GeneratedColumn<int> opSeq = GeneratedColumn<int>(
+    'op_seq',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _targetPubkeyHexMeta = const VerificationMeta(
+    'targetPubkeyHex',
+  );
+  @override
+  late final GeneratedColumn<String> targetPubkeyHex = GeneratedColumn<String>(
+    'target_pubkey_hex',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _signerPubkeyHexMeta = const VerificationMeta(
+    'signerPubkeyHex',
+  );
+  @override
+  late final GeneratedColumn<String> signerPubkeyHex = GeneratedColumn<String>(
+    'signer_pubkey_hex',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _signatureHexMeta = const VerificationMeta(
+    'signatureHex',
+  );
+  @override
+  late final GeneratedColumn<String> signatureHex = GeneratedColumn<String>(
+    'signature_hex',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _receivedAtMeta = const VerificationMeta(
+    'receivedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> receivedAt = GeneratedColumn<DateTime>(
+    'received_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _appliedMeta = const VerificationMeta(
+    'applied',
+  );
+  @override
+  late final GeneratedColumn<bool> applied = GeneratedColumn<bool>(
+    'applied',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("applied" IN (0, 1))',
+    ),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    chatId,
+    opSeq,
+    kind,
+    targetPubkeyHex,
+    signerPubkeyHex,
+    signatureHex,
+    receivedAt,
+    applied,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'group_ops_log';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<GroupOpsLogData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('chat_id')) {
+      context.handle(
+        _chatIdMeta,
+        chatId.isAcceptableOrUnknown(data['chat_id']!, _chatIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_chatIdMeta);
+    }
+    if (data.containsKey('op_seq')) {
+      context.handle(
+        _opSeqMeta,
+        opSeq.isAcceptableOrUnknown(data['op_seq']!, _opSeqMeta),
+      );
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_kindMeta);
+    }
+    if (data.containsKey('target_pubkey_hex')) {
+      context.handle(
+        _targetPubkeyHexMeta,
+        targetPubkeyHex.isAcceptableOrUnknown(
+          data['target_pubkey_hex']!,
+          _targetPubkeyHexMeta,
+        ),
+      );
+    }
+    if (data.containsKey('signer_pubkey_hex')) {
+      context.handle(
+        _signerPubkeyHexMeta,
+        signerPubkeyHex.isAcceptableOrUnknown(
+          data['signer_pubkey_hex']!,
+          _signerPubkeyHexMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_signerPubkeyHexMeta);
+    }
+    if (data.containsKey('signature_hex')) {
+      context.handle(
+        _signatureHexMeta,
+        signatureHex.isAcceptableOrUnknown(
+          data['signature_hex']!,
+          _signatureHexMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_signatureHexMeta);
+    }
+    if (data.containsKey('received_at')) {
+      context.handle(
+        _receivedAtMeta,
+        receivedAt.isAcceptableOrUnknown(data['received_at']!, _receivedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_receivedAtMeta);
+    }
+    if (data.containsKey('applied')) {
+      context.handle(
+        _appliedMeta,
+        applied.isAcceptableOrUnknown(data['applied']!, _appliedMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_appliedMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  GroupOpsLogData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return GroupOpsLogData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      chatId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}chat_id'],
+      )!,
+      opSeq: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}op_seq'],
+      ),
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      targetPubkeyHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}target_pubkey_hex'],
+      ),
+      signerPubkeyHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}signer_pubkey_hex'],
+      )!,
+      signatureHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}signature_hex'],
+      )!,
+      receivedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}received_at'],
+      )!,
+      applied: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}applied'],
+      )!,
+    );
+  }
+
+  @override
+  $GroupOpsLogTable createAlias(String alias) {
+    return $GroupOpsLogTable(attachedDatabase, alias);
+  }
+}
+
+class GroupOpsLogData extends DataClass implements Insertable<GroupOpsLogData> {
+  final String id;
+  final String chatId;
+  final int? opSeq;
+  final String kind;
+  final String? targetPubkeyHex;
+  final String signerPubkeyHex;
+  final String signatureHex;
+  final DateTime receivedAt;
+  final bool applied;
+  const GroupOpsLogData({
+    required this.id,
+    required this.chatId,
+    this.opSeq,
+    required this.kind,
+    this.targetPubkeyHex,
+    required this.signerPubkeyHex,
+    required this.signatureHex,
+    required this.receivedAt,
+    required this.applied,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['chat_id'] = Variable<String>(chatId);
+    if (!nullToAbsent || opSeq != null) {
+      map['op_seq'] = Variable<int>(opSeq);
+    }
+    map['kind'] = Variable<String>(kind);
+    if (!nullToAbsent || targetPubkeyHex != null) {
+      map['target_pubkey_hex'] = Variable<String>(targetPubkeyHex);
+    }
+    map['signer_pubkey_hex'] = Variable<String>(signerPubkeyHex);
+    map['signature_hex'] = Variable<String>(signatureHex);
+    map['received_at'] = Variable<DateTime>(receivedAt);
+    map['applied'] = Variable<bool>(applied);
+    return map;
+  }
+
+  GroupOpsLogCompanion toCompanion(bool nullToAbsent) {
+    return GroupOpsLogCompanion(
+      id: Value(id),
+      chatId: Value(chatId),
+      opSeq: opSeq == null && nullToAbsent
+          ? const Value.absent()
+          : Value(opSeq),
+      kind: Value(kind),
+      targetPubkeyHex: targetPubkeyHex == null && nullToAbsent
+          ? const Value.absent()
+          : Value(targetPubkeyHex),
+      signerPubkeyHex: Value(signerPubkeyHex),
+      signatureHex: Value(signatureHex),
+      receivedAt: Value(receivedAt),
+      applied: Value(applied),
+    );
+  }
+
+  factory GroupOpsLogData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return GroupOpsLogData(
+      id: serializer.fromJson<String>(json['id']),
+      chatId: serializer.fromJson<String>(json['chatId']),
+      opSeq: serializer.fromJson<int?>(json['opSeq']),
+      kind: serializer.fromJson<String>(json['kind']),
+      targetPubkeyHex: serializer.fromJson<String?>(json['targetPubkeyHex']),
+      signerPubkeyHex: serializer.fromJson<String>(json['signerPubkeyHex']),
+      signatureHex: serializer.fromJson<String>(json['signatureHex']),
+      receivedAt: serializer.fromJson<DateTime>(json['receivedAt']),
+      applied: serializer.fromJson<bool>(json['applied']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'chatId': serializer.toJson<String>(chatId),
+      'opSeq': serializer.toJson<int?>(opSeq),
+      'kind': serializer.toJson<String>(kind),
+      'targetPubkeyHex': serializer.toJson<String?>(targetPubkeyHex),
+      'signerPubkeyHex': serializer.toJson<String>(signerPubkeyHex),
+      'signatureHex': serializer.toJson<String>(signatureHex),
+      'receivedAt': serializer.toJson<DateTime>(receivedAt),
+      'applied': serializer.toJson<bool>(applied),
+    };
+  }
+
+  GroupOpsLogData copyWith({
+    String? id,
+    String? chatId,
+    Value<int?> opSeq = const Value.absent(),
+    String? kind,
+    Value<String?> targetPubkeyHex = const Value.absent(),
+    String? signerPubkeyHex,
+    String? signatureHex,
+    DateTime? receivedAt,
+    bool? applied,
+  }) => GroupOpsLogData(
+    id: id ?? this.id,
+    chatId: chatId ?? this.chatId,
+    opSeq: opSeq.present ? opSeq.value : this.opSeq,
+    kind: kind ?? this.kind,
+    targetPubkeyHex: targetPubkeyHex.present
+        ? targetPubkeyHex.value
+        : this.targetPubkeyHex,
+    signerPubkeyHex: signerPubkeyHex ?? this.signerPubkeyHex,
+    signatureHex: signatureHex ?? this.signatureHex,
+    receivedAt: receivedAt ?? this.receivedAt,
+    applied: applied ?? this.applied,
+  );
+  GroupOpsLogData copyWithCompanion(GroupOpsLogCompanion data) {
+    return GroupOpsLogData(
+      id: data.id.present ? data.id.value : this.id,
+      chatId: data.chatId.present ? data.chatId.value : this.chatId,
+      opSeq: data.opSeq.present ? data.opSeq.value : this.opSeq,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      targetPubkeyHex: data.targetPubkeyHex.present
+          ? data.targetPubkeyHex.value
+          : this.targetPubkeyHex,
+      signerPubkeyHex: data.signerPubkeyHex.present
+          ? data.signerPubkeyHex.value
+          : this.signerPubkeyHex,
+      signatureHex: data.signatureHex.present
+          ? data.signatureHex.value
+          : this.signatureHex,
+      receivedAt: data.receivedAt.present
+          ? data.receivedAt.value
+          : this.receivedAt,
+      applied: data.applied.present ? data.applied.value : this.applied,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GroupOpsLogData(')
+          ..write('id: $id, ')
+          ..write('chatId: $chatId, ')
+          ..write('opSeq: $opSeq, ')
+          ..write('kind: $kind, ')
+          ..write('targetPubkeyHex: $targetPubkeyHex, ')
+          ..write('signerPubkeyHex: $signerPubkeyHex, ')
+          ..write('signatureHex: $signatureHex, ')
+          ..write('receivedAt: $receivedAt, ')
+          ..write('applied: $applied')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    chatId,
+    opSeq,
+    kind,
+    targetPubkeyHex,
+    signerPubkeyHex,
+    signatureHex,
+    receivedAt,
+    applied,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is GroupOpsLogData &&
+          other.id == this.id &&
+          other.chatId == this.chatId &&
+          other.opSeq == this.opSeq &&
+          other.kind == this.kind &&
+          other.targetPubkeyHex == this.targetPubkeyHex &&
+          other.signerPubkeyHex == this.signerPubkeyHex &&
+          other.signatureHex == this.signatureHex &&
+          other.receivedAt == this.receivedAt &&
+          other.applied == this.applied);
+}
+
+class GroupOpsLogCompanion extends UpdateCompanion<GroupOpsLogData> {
+  final Value<String> id;
+  final Value<String> chatId;
+  final Value<int?> opSeq;
+  final Value<String> kind;
+  final Value<String?> targetPubkeyHex;
+  final Value<String> signerPubkeyHex;
+  final Value<String> signatureHex;
+  final Value<DateTime> receivedAt;
+  final Value<bool> applied;
+  final Value<int> rowid;
+  const GroupOpsLogCompanion({
+    this.id = const Value.absent(),
+    this.chatId = const Value.absent(),
+    this.opSeq = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.targetPubkeyHex = const Value.absent(),
+    this.signerPubkeyHex = const Value.absent(),
+    this.signatureHex = const Value.absent(),
+    this.receivedAt = const Value.absent(),
+    this.applied = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  GroupOpsLogCompanion.insert({
+    required String id,
+    required String chatId,
+    this.opSeq = const Value.absent(),
+    required String kind,
+    this.targetPubkeyHex = const Value.absent(),
+    required String signerPubkeyHex,
+    required String signatureHex,
+    required DateTime receivedAt,
+    required bool applied,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       chatId = Value(chatId),
+       kind = Value(kind),
+       signerPubkeyHex = Value(signerPubkeyHex),
+       signatureHex = Value(signatureHex),
+       receivedAt = Value(receivedAt),
+       applied = Value(applied);
+  static Insertable<GroupOpsLogData> custom({
+    Expression<String>? id,
+    Expression<String>? chatId,
+    Expression<int>? opSeq,
+    Expression<String>? kind,
+    Expression<String>? targetPubkeyHex,
+    Expression<String>? signerPubkeyHex,
+    Expression<String>? signatureHex,
+    Expression<DateTime>? receivedAt,
+    Expression<bool>? applied,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (chatId != null) 'chat_id': chatId,
+      if (opSeq != null) 'op_seq': opSeq,
+      if (kind != null) 'kind': kind,
+      if (targetPubkeyHex != null) 'target_pubkey_hex': targetPubkeyHex,
+      if (signerPubkeyHex != null) 'signer_pubkey_hex': signerPubkeyHex,
+      if (signatureHex != null) 'signature_hex': signatureHex,
+      if (receivedAt != null) 'received_at': receivedAt,
+      if (applied != null) 'applied': applied,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  GroupOpsLogCompanion copyWith({
+    Value<String>? id,
+    Value<String>? chatId,
+    Value<int?>? opSeq,
+    Value<String>? kind,
+    Value<String?>? targetPubkeyHex,
+    Value<String>? signerPubkeyHex,
+    Value<String>? signatureHex,
+    Value<DateTime>? receivedAt,
+    Value<bool>? applied,
+    Value<int>? rowid,
+  }) {
+    return GroupOpsLogCompanion(
+      id: id ?? this.id,
+      chatId: chatId ?? this.chatId,
+      opSeq: opSeq ?? this.opSeq,
+      kind: kind ?? this.kind,
+      targetPubkeyHex: targetPubkeyHex ?? this.targetPubkeyHex,
+      signerPubkeyHex: signerPubkeyHex ?? this.signerPubkeyHex,
+      signatureHex: signatureHex ?? this.signatureHex,
+      receivedAt: receivedAt ?? this.receivedAt,
+      applied: applied ?? this.applied,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (chatId.present) {
+      map['chat_id'] = Variable<String>(chatId.value);
+    }
+    if (opSeq.present) {
+      map['op_seq'] = Variable<int>(opSeq.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (targetPubkeyHex.present) {
+      map['target_pubkey_hex'] = Variable<String>(targetPubkeyHex.value);
+    }
+    if (signerPubkeyHex.present) {
+      map['signer_pubkey_hex'] = Variable<String>(signerPubkeyHex.value);
+    }
+    if (signatureHex.present) {
+      map['signature_hex'] = Variable<String>(signatureHex.value);
+    }
+    if (receivedAt.present) {
+      map['received_at'] = Variable<DateTime>(receivedAt.value);
+    }
+    if (applied.present) {
+      map['applied'] = Variable<bool>(applied.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GroupOpsLogCompanion(')
+          ..write('id: $id, ')
+          ..write('chatId: $chatId, ')
+          ..write('opSeq: $opSeq, ')
+          ..write('kind: $kind, ')
+          ..write('targetPubkeyHex: $targetPubkeyHex, ')
+          ..write('signerPubkeyHex: $signerPubkeyHex, ')
+          ..write('signatureHex: $signatureHex, ')
+          ..write('receivedAt: $receivedAt, ')
+          ..write('applied: $applied, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PeerBundleStateTable extends PeerBundleState
+    with TableInfo<$PeerBundleStateTable, PeerBundleStateData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PeerBundleStateTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _peerPubkeyHexMeta = const VerificationMeta(
+    'peerPubkeyHex',
+  );
+  @override
+  late final GeneratedColumn<String> peerPubkeyHex = GeneratedColumn<String>(
+    'peer_pubkey_hex',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _bundleSentAtMeta = const VerificationMeta(
+    'bundleSentAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> bundleSentAt = GeneratedColumn<DateTime>(
+    'bundle_sent_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _peerBundleReceivedAtMeta =
+      const VerificationMeta('peerBundleReceivedAt');
+  @override
+  late final GeneratedColumn<DateTime> peerBundleReceivedAt =
+      GeneratedColumn<DateTime>(
+        'peer_bundle_received_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  @override
+  List<GeneratedColumn> get $columns => [
+    peerPubkeyHex,
+    bundleSentAt,
+    peerBundleReceivedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'peer_bundle_state';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PeerBundleStateData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('peer_pubkey_hex')) {
+      context.handle(
+        _peerPubkeyHexMeta,
+        peerPubkeyHex.isAcceptableOrUnknown(
+          data['peer_pubkey_hex']!,
+          _peerPubkeyHexMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_peerPubkeyHexMeta);
+    }
+    if (data.containsKey('bundle_sent_at')) {
+      context.handle(
+        _bundleSentAtMeta,
+        bundleSentAt.isAcceptableOrUnknown(
+          data['bundle_sent_at']!,
+          _bundleSentAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('peer_bundle_received_at')) {
+      context.handle(
+        _peerBundleReceivedAtMeta,
+        peerBundleReceivedAt.isAcceptableOrUnknown(
+          data['peer_bundle_received_at']!,
+          _peerBundleReceivedAtMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {peerPubkeyHex};
+  @override
+  PeerBundleStateData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PeerBundleStateData(
+      peerPubkeyHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}peer_pubkey_hex'],
+      )!,
+      bundleSentAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}bundle_sent_at'],
+      ),
+      peerBundleReceivedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}peer_bundle_received_at'],
+      ),
+    );
+  }
+
+  @override
+  $PeerBundleStateTable createAlias(String alias) {
+    return $PeerBundleStateTable(attachedDatabase, alias);
+  }
+}
+
+class PeerBundleStateData extends DataClass
+    implements Insertable<PeerBundleStateData> {
+  final String peerPubkeyHex;
+  final DateTime? bundleSentAt;
+  final DateTime? peerBundleReceivedAt;
+  const PeerBundleStateData({
+    required this.peerPubkeyHex,
+    this.bundleSentAt,
+    this.peerBundleReceivedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['peer_pubkey_hex'] = Variable<String>(peerPubkeyHex);
+    if (!nullToAbsent || bundleSentAt != null) {
+      map['bundle_sent_at'] = Variable<DateTime>(bundleSentAt);
+    }
+    if (!nullToAbsent || peerBundleReceivedAt != null) {
+      map['peer_bundle_received_at'] = Variable<DateTime>(peerBundleReceivedAt);
+    }
+    return map;
+  }
+
+  PeerBundleStateCompanion toCompanion(bool nullToAbsent) {
+    return PeerBundleStateCompanion(
+      peerPubkeyHex: Value(peerPubkeyHex),
+      bundleSentAt: bundleSentAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(bundleSentAt),
+      peerBundleReceivedAt: peerBundleReceivedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(peerBundleReceivedAt),
+    );
+  }
+
+  factory PeerBundleStateData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PeerBundleStateData(
+      peerPubkeyHex: serializer.fromJson<String>(json['peerPubkeyHex']),
+      bundleSentAt: serializer.fromJson<DateTime?>(json['bundleSentAt']),
+      peerBundleReceivedAt: serializer.fromJson<DateTime?>(
+        json['peerBundleReceivedAt'],
+      ),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'peerPubkeyHex': serializer.toJson<String>(peerPubkeyHex),
+      'bundleSentAt': serializer.toJson<DateTime?>(bundleSentAt),
+      'peerBundleReceivedAt': serializer.toJson<DateTime?>(
+        peerBundleReceivedAt,
+      ),
+    };
+  }
+
+  PeerBundleStateData copyWith({
+    String? peerPubkeyHex,
+    Value<DateTime?> bundleSentAt = const Value.absent(),
+    Value<DateTime?> peerBundleReceivedAt = const Value.absent(),
+  }) => PeerBundleStateData(
+    peerPubkeyHex: peerPubkeyHex ?? this.peerPubkeyHex,
+    bundleSentAt: bundleSentAt.present ? bundleSentAt.value : this.bundleSentAt,
+    peerBundleReceivedAt: peerBundleReceivedAt.present
+        ? peerBundleReceivedAt.value
+        : this.peerBundleReceivedAt,
+  );
+  PeerBundleStateData copyWithCompanion(PeerBundleStateCompanion data) {
+    return PeerBundleStateData(
+      peerPubkeyHex: data.peerPubkeyHex.present
+          ? data.peerPubkeyHex.value
+          : this.peerPubkeyHex,
+      bundleSentAt: data.bundleSentAt.present
+          ? data.bundleSentAt.value
+          : this.bundleSentAt,
+      peerBundleReceivedAt: data.peerBundleReceivedAt.present
+          ? data.peerBundleReceivedAt.value
+          : this.peerBundleReceivedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PeerBundleStateData(')
+          ..write('peerPubkeyHex: $peerPubkeyHex, ')
+          ..write('bundleSentAt: $bundleSentAt, ')
+          ..write('peerBundleReceivedAt: $peerBundleReceivedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(peerPubkeyHex, bundleSentAt, peerBundleReceivedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PeerBundleStateData &&
+          other.peerPubkeyHex == this.peerPubkeyHex &&
+          other.bundleSentAt == this.bundleSentAt &&
+          other.peerBundleReceivedAt == this.peerBundleReceivedAt);
+}
+
+class PeerBundleStateCompanion extends UpdateCompanion<PeerBundleStateData> {
+  final Value<String> peerPubkeyHex;
+  final Value<DateTime?> bundleSentAt;
+  final Value<DateTime?> peerBundleReceivedAt;
+  final Value<int> rowid;
+  const PeerBundleStateCompanion({
+    this.peerPubkeyHex = const Value.absent(),
+    this.bundleSentAt = const Value.absent(),
+    this.peerBundleReceivedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PeerBundleStateCompanion.insert({
+    required String peerPubkeyHex,
+    this.bundleSentAt = const Value.absent(),
+    this.peerBundleReceivedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : peerPubkeyHex = Value(peerPubkeyHex);
+  static Insertable<PeerBundleStateData> custom({
+    Expression<String>? peerPubkeyHex,
+    Expression<DateTime>? bundleSentAt,
+    Expression<DateTime>? peerBundleReceivedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (peerPubkeyHex != null) 'peer_pubkey_hex': peerPubkeyHex,
+      if (bundleSentAt != null) 'bundle_sent_at': bundleSentAt,
+      if (peerBundleReceivedAt != null)
+        'peer_bundle_received_at': peerBundleReceivedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PeerBundleStateCompanion copyWith({
+    Value<String>? peerPubkeyHex,
+    Value<DateTime?>? bundleSentAt,
+    Value<DateTime?>? peerBundleReceivedAt,
+    Value<int>? rowid,
+  }) {
+    return PeerBundleStateCompanion(
+      peerPubkeyHex: peerPubkeyHex ?? this.peerPubkeyHex,
+      bundleSentAt: bundleSentAt ?? this.bundleSentAt,
+      peerBundleReceivedAt: peerBundleReceivedAt ?? this.peerBundleReceivedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (peerPubkeyHex.present) {
+      map['peer_pubkey_hex'] = Variable<String>(peerPubkeyHex.value);
+    }
+    if (bundleSentAt.present) {
+      map['bundle_sent_at'] = Variable<DateTime>(bundleSentAt.value);
+    }
+    if (peerBundleReceivedAt.present) {
+      map['peer_bundle_received_at'] = Variable<DateTime>(
+        peerBundleReceivedAt.value,
+      );
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PeerBundleStateCompanion(')
+          ..write('peerPubkeyHex: $peerPubkeyHex, ')
+          ..write('bundleSentAt: $bundleSentAt, ')
+          ..write('peerBundleReceivedAt: $peerBundleReceivedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2580,6 +4003,11 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ChatsTable chats = $ChatsTable(this);
   late final $MessagesTable messages = $MessagesTable(this);
   late final $LamportSeqTable lamportSeq = $LamportSeqTable(this);
+  late final $GroupMembersTable groupMembers = $GroupMembersTable(this);
+  late final $GroupOpsLogTable groupOpsLog = $GroupOpsLogTable(this);
+  late final $PeerBundleStateTable peerBundleState = $PeerBundleStateTable(
+    this,
+  );
   late final $SignalIdentityTable signalIdentity = $SignalIdentityTable(this);
   late final $SignalPreKeysTable signalPreKeys = $SignalPreKeysTable(this);
   late final $SignalSignedPreKeysTable signalSignedPreKeys =
@@ -2596,6 +4024,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     chats,
     messages,
     lamportSeq,
+    groupMembers,
+    groupOpsLog,
+    peerBundleState,
     signalIdentity,
     signalPreKeys,
     signalSignedPreKeys,
@@ -2746,22 +4177,28 @@ typedef $$ContactsTableProcessedTableManager =
     >;
 typedef $$ChatsTableCreateCompanionBuilder =
     ChatsCompanion Function({
-      required String peerPubkeyHex,
+      required String chatId,
+      Value<String> kind,
+      Value<String?> groupName,
+      Value<String?> creatorPubkeyHex,
       required DateTime createdAt,
       Value<DateTime?> lastMessageAt,
       Value<String?> lastMessagePreview,
-      Value<DateTime?> bundleSentAt,
-      Value<DateTime?> peerBundleReceivedAt,
+      Value<DateTime?> leftAt,
+      Value<int> lastOpSeq,
       Value<int> rowid,
     });
 typedef $$ChatsTableUpdateCompanionBuilder =
     ChatsCompanion Function({
-      Value<String> peerPubkeyHex,
+      Value<String> chatId,
+      Value<String> kind,
+      Value<String?> groupName,
+      Value<String?> creatorPubkeyHex,
       Value<DateTime> createdAt,
       Value<DateTime?> lastMessageAt,
       Value<String?> lastMessagePreview,
-      Value<DateTime?> bundleSentAt,
-      Value<DateTime?> peerBundleReceivedAt,
+      Value<DateTime?> leftAt,
+      Value<int> lastOpSeq,
       Value<int> rowid,
     });
 
@@ -2773,8 +4210,23 @@ class $$ChatsTableFilterComposer extends Composer<_$AppDatabase, $ChatsTable> {
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnFilters<String> get peerPubkeyHex => $composableBuilder(
-    column: $table.peerPubkeyHex,
+  ColumnFilters<String> get chatId => $composableBuilder(
+    column: $table.chatId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get groupName => $composableBuilder(
+    column: $table.groupName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get creatorPubkeyHex => $composableBuilder(
+    column: $table.creatorPubkeyHex,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2793,13 +4245,13 @@ class $$ChatsTableFilterComposer extends Composer<_$AppDatabase, $ChatsTable> {
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<DateTime> get bundleSentAt => $composableBuilder(
-    column: $table.bundleSentAt,
+  ColumnFilters<DateTime> get leftAt => $composableBuilder(
+    column: $table.leftAt,
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<DateTime> get peerBundleReceivedAt => $composableBuilder(
-    column: $table.peerBundleReceivedAt,
+  ColumnFilters<int> get lastOpSeq => $composableBuilder(
+    column: $table.lastOpSeq,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2813,8 +4265,23 @@ class $$ChatsTableOrderingComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnOrderings<String> get peerPubkeyHex => $composableBuilder(
-    column: $table.peerPubkeyHex,
+  ColumnOrderings<String> get chatId => $composableBuilder(
+    column: $table.chatId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get groupName => $composableBuilder(
+    column: $table.groupName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get creatorPubkeyHex => $composableBuilder(
+    column: $table.creatorPubkeyHex,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -2833,13 +4300,13 @@ class $$ChatsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<DateTime> get bundleSentAt => $composableBuilder(
-    column: $table.bundleSentAt,
+  ColumnOrderings<DateTime> get leftAt => $composableBuilder(
+    column: $table.leftAt,
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<DateTime> get peerBundleReceivedAt => $composableBuilder(
-    column: $table.peerBundleReceivedAt,
+  ColumnOrderings<int> get lastOpSeq => $composableBuilder(
+    column: $table.lastOpSeq,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -2853,8 +4320,17 @@ class $$ChatsTableAnnotationComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  GeneratedColumn<String> get peerPubkeyHex => $composableBuilder(
-    column: $table.peerPubkeyHex,
+  GeneratedColumn<String> get chatId =>
+      $composableBuilder(column: $table.chatId, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get groupName =>
+      $composableBuilder(column: $table.groupName, builder: (column) => column);
+
+  GeneratedColumn<String> get creatorPubkeyHex => $composableBuilder(
+    column: $table.creatorPubkeyHex,
     builder: (column) => column,
   );
 
@@ -2871,15 +4347,11 @@ class $$ChatsTableAnnotationComposer
     builder: (column) => column,
   );
 
-  GeneratedColumn<DateTime> get bundleSentAt => $composableBuilder(
-    column: $table.bundleSentAt,
-    builder: (column) => column,
-  );
+  GeneratedColumn<DateTime> get leftAt =>
+      $composableBuilder(column: $table.leftAt, builder: (column) => column);
 
-  GeneratedColumn<DateTime> get peerBundleReceivedAt => $composableBuilder(
-    column: $table.peerBundleReceivedAt,
-    builder: (column) => column,
-  );
+  GeneratedColumn<int> get lastOpSeq =>
+      $composableBuilder(column: $table.lastOpSeq, builder: (column) => column);
 }
 
 class $$ChatsTableTableManager
@@ -2910,38 +4382,50 @@ class $$ChatsTableTableManager
               $$ChatsTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
-                Value<String> peerPubkeyHex = const Value.absent(),
+                Value<String> chatId = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<String?> groupName = const Value.absent(),
+                Value<String?> creatorPubkeyHex = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime?> lastMessageAt = const Value.absent(),
                 Value<String?> lastMessagePreview = const Value.absent(),
-                Value<DateTime?> bundleSentAt = const Value.absent(),
-                Value<DateTime?> peerBundleReceivedAt = const Value.absent(),
+                Value<DateTime?> leftAt = const Value.absent(),
+                Value<int> lastOpSeq = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ChatsCompanion(
-                peerPubkeyHex: peerPubkeyHex,
+                chatId: chatId,
+                kind: kind,
+                groupName: groupName,
+                creatorPubkeyHex: creatorPubkeyHex,
                 createdAt: createdAt,
                 lastMessageAt: lastMessageAt,
                 lastMessagePreview: lastMessagePreview,
-                bundleSentAt: bundleSentAt,
-                peerBundleReceivedAt: peerBundleReceivedAt,
+                leftAt: leftAt,
+                lastOpSeq: lastOpSeq,
                 rowid: rowid,
               ),
           createCompanionCallback:
               ({
-                required String peerPubkeyHex,
+                required String chatId,
+                Value<String> kind = const Value.absent(),
+                Value<String?> groupName = const Value.absent(),
+                Value<String?> creatorPubkeyHex = const Value.absent(),
                 required DateTime createdAt,
                 Value<DateTime?> lastMessageAt = const Value.absent(),
                 Value<String?> lastMessagePreview = const Value.absent(),
-                Value<DateTime?> bundleSentAt = const Value.absent(),
-                Value<DateTime?> peerBundleReceivedAt = const Value.absent(),
+                Value<DateTime?> leftAt = const Value.absent(),
+                Value<int> lastOpSeq = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ChatsCompanion.insert(
-                peerPubkeyHex: peerPubkeyHex,
+                chatId: chatId,
+                kind: kind,
+                groupName: groupName,
+                creatorPubkeyHex: creatorPubkeyHex,
                 createdAt: createdAt,
                 lastMessageAt: lastMessageAt,
                 lastMessagePreview: lastMessagePreview,
-                bundleSentAt: bundleSentAt,
-                peerBundleReceivedAt: peerBundleReceivedAt,
+                leftAt: leftAt,
+                lastOpSeq: lastOpSeq,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -2975,6 +4459,7 @@ typedef $$MessagesTableCreateCompanionBuilder =
       required int lamport,
       required DateTime sentAt,
       Value<DateTime?> receivedAt,
+      Value<String> kind,
       Value<int> rowid,
     });
 typedef $$MessagesTableUpdateCompanionBuilder =
@@ -2986,6 +4471,7 @@ typedef $$MessagesTableUpdateCompanionBuilder =
       Value<int> lamport,
       Value<DateTime> sentAt,
       Value<DateTime?> receivedAt,
+      Value<String> kind,
       Value<int> rowid,
     });
 
@@ -3030,6 +4516,11 @@ class $$MessagesTableFilterComposer
 
   ColumnFilters<DateTime> get receivedAt => $composableBuilder(
     column: $table.receivedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -3077,6 +4568,11 @@ class $$MessagesTableOrderingComposer
     column: $table.receivedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$MessagesTableAnnotationComposer
@@ -3112,6 +4608,9 @@ class $$MessagesTableAnnotationComposer
     column: $table.receivedAt,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
 }
 
 class $$MessagesTableTableManager
@@ -3149,6 +4648,7 @@ class $$MessagesTableTableManager
                 Value<int> lamport = const Value.absent(),
                 Value<DateTime> sentAt = const Value.absent(),
                 Value<DateTime?> receivedAt = const Value.absent(),
+                Value<String> kind = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MessagesCompanion(
                 id: id,
@@ -3158,6 +4658,7 @@ class $$MessagesTableTableManager
                 lamport: lamport,
                 sentAt: sentAt,
                 receivedAt: receivedAt,
+                kind: kind,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -3169,6 +4670,7 @@ class $$MessagesTableTableManager
                 required int lamport,
                 required DateTime sentAt,
                 Value<DateTime?> receivedAt = const Value.absent(),
+                Value<String> kind = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MessagesCompanion.insert(
                 id: id,
@@ -3178,6 +4680,7 @@ class $$MessagesTableTableManager
                 lamport: lamport,
                 sentAt: sentAt,
                 receivedAt: receivedAt,
+                kind: kind,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -3343,6 +4846,672 @@ typedef $$LamportSeqTableProcessedTableManager =
         BaseReferences<_$AppDatabase, $LamportSeqTable, LamportSeqData>,
       ),
       LamportSeqData,
+      PrefetchHooks Function()
+    >;
+typedef $$GroupMembersTableCreateCompanionBuilder =
+    GroupMembersCompanion Function({
+      required String chatId,
+      required String memberPubkeyHex,
+      required DateTime addedAt,
+      required String addedByPubkeyHex,
+      Value<DateTime?> removedAt,
+      Value<int> rowid,
+    });
+typedef $$GroupMembersTableUpdateCompanionBuilder =
+    GroupMembersCompanion Function({
+      Value<String> chatId,
+      Value<String> memberPubkeyHex,
+      Value<DateTime> addedAt,
+      Value<String> addedByPubkeyHex,
+      Value<DateTime?> removedAt,
+      Value<int> rowid,
+    });
+
+class $$GroupMembersTableFilterComposer
+    extends Composer<_$AppDatabase, $GroupMembersTable> {
+  $$GroupMembersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get chatId => $composableBuilder(
+    column: $table.chatId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get memberPubkeyHex => $composableBuilder(
+    column: $table.memberPubkeyHex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get addedByPubkeyHex => $composableBuilder(
+    column: $table.addedByPubkeyHex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get removedAt => $composableBuilder(
+    column: $table.removedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$GroupMembersTableOrderingComposer
+    extends Composer<_$AppDatabase, $GroupMembersTable> {
+  $$GroupMembersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get chatId => $composableBuilder(
+    column: $table.chatId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get memberPubkeyHex => $composableBuilder(
+    column: $table.memberPubkeyHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get addedByPubkeyHex => $composableBuilder(
+    column: $table.addedByPubkeyHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get removedAt => $composableBuilder(
+    column: $table.removedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$GroupMembersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $GroupMembersTable> {
+  $$GroupMembersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get chatId =>
+      $composableBuilder(column: $table.chatId, builder: (column) => column);
+
+  GeneratedColumn<String> get memberPubkeyHex => $composableBuilder(
+    column: $table.memberPubkeyHex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get addedAt =>
+      $composableBuilder(column: $table.addedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get addedByPubkeyHex => $composableBuilder(
+    column: $table.addedByPubkeyHex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get removedAt =>
+      $composableBuilder(column: $table.removedAt, builder: (column) => column);
+}
+
+class $$GroupMembersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $GroupMembersTable,
+          GroupMember,
+          $$GroupMembersTableFilterComposer,
+          $$GroupMembersTableOrderingComposer,
+          $$GroupMembersTableAnnotationComposer,
+          $$GroupMembersTableCreateCompanionBuilder,
+          $$GroupMembersTableUpdateCompanionBuilder,
+          (
+            GroupMember,
+            BaseReferences<_$AppDatabase, $GroupMembersTable, GroupMember>,
+          ),
+          GroupMember,
+          PrefetchHooks Function()
+        > {
+  $$GroupMembersTableTableManager(_$AppDatabase db, $GroupMembersTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$GroupMembersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$GroupMembersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$GroupMembersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> chatId = const Value.absent(),
+                Value<String> memberPubkeyHex = const Value.absent(),
+                Value<DateTime> addedAt = const Value.absent(),
+                Value<String> addedByPubkeyHex = const Value.absent(),
+                Value<DateTime?> removedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => GroupMembersCompanion(
+                chatId: chatId,
+                memberPubkeyHex: memberPubkeyHex,
+                addedAt: addedAt,
+                addedByPubkeyHex: addedByPubkeyHex,
+                removedAt: removedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String chatId,
+                required String memberPubkeyHex,
+                required DateTime addedAt,
+                required String addedByPubkeyHex,
+                Value<DateTime?> removedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => GroupMembersCompanion.insert(
+                chatId: chatId,
+                memberPubkeyHex: memberPubkeyHex,
+                addedAt: addedAt,
+                addedByPubkeyHex: addedByPubkeyHex,
+                removedAt: removedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$GroupMembersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $GroupMembersTable,
+      GroupMember,
+      $$GroupMembersTableFilterComposer,
+      $$GroupMembersTableOrderingComposer,
+      $$GroupMembersTableAnnotationComposer,
+      $$GroupMembersTableCreateCompanionBuilder,
+      $$GroupMembersTableUpdateCompanionBuilder,
+      (
+        GroupMember,
+        BaseReferences<_$AppDatabase, $GroupMembersTable, GroupMember>,
+      ),
+      GroupMember,
+      PrefetchHooks Function()
+    >;
+typedef $$GroupOpsLogTableCreateCompanionBuilder =
+    GroupOpsLogCompanion Function({
+      required String id,
+      required String chatId,
+      Value<int?> opSeq,
+      required String kind,
+      Value<String?> targetPubkeyHex,
+      required String signerPubkeyHex,
+      required String signatureHex,
+      required DateTime receivedAt,
+      required bool applied,
+      Value<int> rowid,
+    });
+typedef $$GroupOpsLogTableUpdateCompanionBuilder =
+    GroupOpsLogCompanion Function({
+      Value<String> id,
+      Value<String> chatId,
+      Value<int?> opSeq,
+      Value<String> kind,
+      Value<String?> targetPubkeyHex,
+      Value<String> signerPubkeyHex,
+      Value<String> signatureHex,
+      Value<DateTime> receivedAt,
+      Value<bool> applied,
+      Value<int> rowid,
+    });
+
+class $$GroupOpsLogTableFilterComposer
+    extends Composer<_$AppDatabase, $GroupOpsLogTable> {
+  $$GroupOpsLogTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get chatId => $composableBuilder(
+    column: $table.chatId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get opSeq => $composableBuilder(
+    column: $table.opSeq,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get targetPubkeyHex => $composableBuilder(
+    column: $table.targetPubkeyHex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get signerPubkeyHex => $composableBuilder(
+    column: $table.signerPubkeyHex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get signatureHex => $composableBuilder(
+    column: $table.signatureHex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get applied => $composableBuilder(
+    column: $table.applied,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$GroupOpsLogTableOrderingComposer
+    extends Composer<_$AppDatabase, $GroupOpsLogTable> {
+  $$GroupOpsLogTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get chatId => $composableBuilder(
+    column: $table.chatId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get opSeq => $composableBuilder(
+    column: $table.opSeq,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get targetPubkeyHex => $composableBuilder(
+    column: $table.targetPubkeyHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get signerPubkeyHex => $composableBuilder(
+    column: $table.signerPubkeyHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get signatureHex => $composableBuilder(
+    column: $table.signatureHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get applied => $composableBuilder(
+    column: $table.applied,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$GroupOpsLogTableAnnotationComposer
+    extends Composer<_$AppDatabase, $GroupOpsLogTable> {
+  $$GroupOpsLogTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get chatId =>
+      $composableBuilder(column: $table.chatId, builder: (column) => column);
+
+  GeneratedColumn<int> get opSeq =>
+      $composableBuilder(column: $table.opSeq, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get targetPubkeyHex => $composableBuilder(
+    column: $table.targetPubkeyHex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get signerPubkeyHex => $composableBuilder(
+    column: $table.signerPubkeyHex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get signatureHex => $composableBuilder(
+    column: $table.signatureHex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get applied =>
+      $composableBuilder(column: $table.applied, builder: (column) => column);
+}
+
+class $$GroupOpsLogTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $GroupOpsLogTable,
+          GroupOpsLogData,
+          $$GroupOpsLogTableFilterComposer,
+          $$GroupOpsLogTableOrderingComposer,
+          $$GroupOpsLogTableAnnotationComposer,
+          $$GroupOpsLogTableCreateCompanionBuilder,
+          $$GroupOpsLogTableUpdateCompanionBuilder,
+          (
+            GroupOpsLogData,
+            BaseReferences<_$AppDatabase, $GroupOpsLogTable, GroupOpsLogData>,
+          ),
+          GroupOpsLogData,
+          PrefetchHooks Function()
+        > {
+  $$GroupOpsLogTableTableManager(_$AppDatabase db, $GroupOpsLogTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$GroupOpsLogTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$GroupOpsLogTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$GroupOpsLogTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> chatId = const Value.absent(),
+                Value<int?> opSeq = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<String?> targetPubkeyHex = const Value.absent(),
+                Value<String> signerPubkeyHex = const Value.absent(),
+                Value<String> signatureHex = const Value.absent(),
+                Value<DateTime> receivedAt = const Value.absent(),
+                Value<bool> applied = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => GroupOpsLogCompanion(
+                id: id,
+                chatId: chatId,
+                opSeq: opSeq,
+                kind: kind,
+                targetPubkeyHex: targetPubkeyHex,
+                signerPubkeyHex: signerPubkeyHex,
+                signatureHex: signatureHex,
+                receivedAt: receivedAt,
+                applied: applied,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String chatId,
+                Value<int?> opSeq = const Value.absent(),
+                required String kind,
+                Value<String?> targetPubkeyHex = const Value.absent(),
+                required String signerPubkeyHex,
+                required String signatureHex,
+                required DateTime receivedAt,
+                required bool applied,
+                Value<int> rowid = const Value.absent(),
+              }) => GroupOpsLogCompanion.insert(
+                id: id,
+                chatId: chatId,
+                opSeq: opSeq,
+                kind: kind,
+                targetPubkeyHex: targetPubkeyHex,
+                signerPubkeyHex: signerPubkeyHex,
+                signatureHex: signatureHex,
+                receivedAt: receivedAt,
+                applied: applied,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$GroupOpsLogTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $GroupOpsLogTable,
+      GroupOpsLogData,
+      $$GroupOpsLogTableFilterComposer,
+      $$GroupOpsLogTableOrderingComposer,
+      $$GroupOpsLogTableAnnotationComposer,
+      $$GroupOpsLogTableCreateCompanionBuilder,
+      $$GroupOpsLogTableUpdateCompanionBuilder,
+      (
+        GroupOpsLogData,
+        BaseReferences<_$AppDatabase, $GroupOpsLogTable, GroupOpsLogData>,
+      ),
+      GroupOpsLogData,
+      PrefetchHooks Function()
+    >;
+typedef $$PeerBundleStateTableCreateCompanionBuilder =
+    PeerBundleStateCompanion Function({
+      required String peerPubkeyHex,
+      Value<DateTime?> bundleSentAt,
+      Value<DateTime?> peerBundleReceivedAt,
+      Value<int> rowid,
+    });
+typedef $$PeerBundleStateTableUpdateCompanionBuilder =
+    PeerBundleStateCompanion Function({
+      Value<String> peerPubkeyHex,
+      Value<DateTime?> bundleSentAt,
+      Value<DateTime?> peerBundleReceivedAt,
+      Value<int> rowid,
+    });
+
+class $$PeerBundleStateTableFilterComposer
+    extends Composer<_$AppDatabase, $PeerBundleStateTable> {
+  $$PeerBundleStateTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get peerPubkeyHex => $composableBuilder(
+    column: $table.peerPubkeyHex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get bundleSentAt => $composableBuilder(
+    column: $table.bundleSentAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get peerBundleReceivedAt => $composableBuilder(
+    column: $table.peerBundleReceivedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$PeerBundleStateTableOrderingComposer
+    extends Composer<_$AppDatabase, $PeerBundleStateTable> {
+  $$PeerBundleStateTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get peerPubkeyHex => $composableBuilder(
+    column: $table.peerPubkeyHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get bundleSentAt => $composableBuilder(
+    column: $table.bundleSentAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get peerBundleReceivedAt => $composableBuilder(
+    column: $table.peerBundleReceivedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$PeerBundleStateTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PeerBundleStateTable> {
+  $$PeerBundleStateTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get peerPubkeyHex => $composableBuilder(
+    column: $table.peerPubkeyHex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get bundleSentAt => $composableBuilder(
+    column: $table.bundleSentAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get peerBundleReceivedAt => $composableBuilder(
+    column: $table.peerBundleReceivedAt,
+    builder: (column) => column,
+  );
+}
+
+class $$PeerBundleStateTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PeerBundleStateTable,
+          PeerBundleStateData,
+          $$PeerBundleStateTableFilterComposer,
+          $$PeerBundleStateTableOrderingComposer,
+          $$PeerBundleStateTableAnnotationComposer,
+          $$PeerBundleStateTableCreateCompanionBuilder,
+          $$PeerBundleStateTableUpdateCompanionBuilder,
+          (
+            PeerBundleStateData,
+            BaseReferences<
+              _$AppDatabase,
+              $PeerBundleStateTable,
+              PeerBundleStateData
+            >,
+          ),
+          PeerBundleStateData,
+          PrefetchHooks Function()
+        > {
+  $$PeerBundleStateTableTableManager(
+    _$AppDatabase db,
+    $PeerBundleStateTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PeerBundleStateTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PeerBundleStateTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PeerBundleStateTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> peerPubkeyHex = const Value.absent(),
+                Value<DateTime?> bundleSentAt = const Value.absent(),
+                Value<DateTime?> peerBundleReceivedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PeerBundleStateCompanion(
+                peerPubkeyHex: peerPubkeyHex,
+                bundleSentAt: bundleSentAt,
+                peerBundleReceivedAt: peerBundleReceivedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String peerPubkeyHex,
+                Value<DateTime?> bundleSentAt = const Value.absent(),
+                Value<DateTime?> peerBundleReceivedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PeerBundleStateCompanion.insert(
+                peerPubkeyHex: peerPubkeyHex,
+                bundleSentAt: bundleSentAt,
+                peerBundleReceivedAt: peerBundleReceivedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$PeerBundleStateTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PeerBundleStateTable,
+      PeerBundleStateData,
+      $$PeerBundleStateTableFilterComposer,
+      $$PeerBundleStateTableOrderingComposer,
+      $$PeerBundleStateTableAnnotationComposer,
+      $$PeerBundleStateTableCreateCompanionBuilder,
+      $$PeerBundleStateTableUpdateCompanionBuilder,
+      (
+        PeerBundleStateData,
+        BaseReferences<
+          _$AppDatabase,
+          $PeerBundleStateTable,
+          PeerBundleStateData
+        >,
+      ),
+      PeerBundleStateData,
       PrefetchHooks Function()
     >;
 typedef $$SignalIdentityTableCreateCompanionBuilder =
@@ -4150,6 +6319,12 @@ class $AppDatabaseManager {
       $$MessagesTableTableManager(_db, _db.messages);
   $$LamportSeqTableTableManager get lamportSeq =>
       $$LamportSeqTableTableManager(_db, _db.lamportSeq);
+  $$GroupMembersTableTableManager get groupMembers =>
+      $$GroupMembersTableTableManager(_db, _db.groupMembers);
+  $$GroupOpsLogTableTableManager get groupOpsLog =>
+      $$GroupOpsLogTableTableManager(_db, _db.groupOpsLog);
+  $$PeerBundleStateTableTableManager get peerBundleState =>
+      $$PeerBundleStateTableTableManager(_db, _db.peerBundleState);
   $$SignalIdentityTableTableManager get signalIdentity =>
       $$SignalIdentityTableTableManager(_db, _db.signalIdentity);
   $$SignalPreKeysTableTableManager get signalPreKeys =>
