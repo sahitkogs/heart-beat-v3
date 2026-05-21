@@ -13,3 +13,10 @@ final chatThreadProvider = StreamProvider.family<List<Message>, String>(
 final chatProvider = StreamProvider.family<Chat?, String>(
   (ref, chatId) => ref.watch(chatsDaoProvider).watchChat(chatId),
 );
+
+/// Stream of active (non-removed) members for a group chat.
+final groupActiveMembersProvider =
+    StreamProvider.family<List<GroupMember>, String>(
+  (ref, chatId) =>
+      ref.watch(groupMembersDaoProvider).watchActiveMembers(chatId),
+);
