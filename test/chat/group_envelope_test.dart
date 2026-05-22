@@ -101,4 +101,64 @@ void main() {
       expect(() => InnerEnvelope.parse(bytes), throwsA(isA<FormatException>()));
     });
   });
+
+  group('senderDisplayName (Phase 10.4.1)', () {
+    test('TextEnvelope round-trip with senderDisplayName', () {
+      final bytes = InnerEnvelope.buildText(
+        chatId: 'c1', lamport: 1, body: 'hi',
+        senderDisplayName: 'Sahit',
+      );
+      final p = InnerEnvelope.parse(bytes) as TextEnvelope;
+      expect(p.body, 'hi');
+      expect(p.senderDisplayName, 'Sahit');
+    });
+
+    test('TextEnvelope absent senderDisplayName parses to null', () {
+      final bytes = InnerEnvelope.buildText(chatId: 'c1', lamport: 1, body: 'hi');
+      final p = InnerEnvelope.parse(bytes) as TextEnvelope;
+      expect(p.senderDisplayName, isNull);
+    });
+
+    test('GroupInviteEnvelope round-trip with senderDisplayName', () {
+      final bytes = InnerEnvelope.buildGroupInvite(
+        chatId: 'g1', groupName: 'Family',
+        creator: 'creatorPK', members: const ['m1', 'm2'],
+        createdAt: DateTime.utc(2026, 5, 21),
+        opSeq: 1, joinedVia: 'create', sigHex: 'deadbeef',
+        senderDisplayName: 'Sahit',
+      );
+      final p = InnerEnvelope.parse(bytes) as GroupInviteEnvelope;
+      expect(p.senderDisplayName, 'Sahit');
+    });
+
+    test('MemberAddEnvelope round-trip with senderDisplayName', () {
+      final bytes = InnerEnvelope.buildMemberAdd(
+        chatId: 'g1', lamport: 5, target: 'newM',
+        addedAt: DateTime.utc(2026, 5, 21), opSeq: 2, sigHex: 'aa',
+        senderDisplayName: 'Sahit K.',
+      );
+      final p = InnerEnvelope.parse(bytes) as MemberAddEnvelope;
+      expect(p.senderDisplayName, 'Sahit K.');
+    });
+
+    test('MemberRemoveEnvelope round-trip with senderDisplayName', () {
+      final bytes = InnerEnvelope.buildMemberRemove(
+        chatId: 'g1', lamport: 6, target: 'badM',
+        removedAt: DateTime.utc(2026, 5, 21), opSeq: 3, sigHex: 'bb',
+        senderDisplayName: 'Sahit',
+      );
+      final p = InnerEnvelope.parse(bytes) as MemberRemoveEnvelope;
+      expect(p.senderDisplayName, 'Sahit');
+    });
+
+    test('MemberLeaveEnvelope round-trip with senderDisplayName', () {
+      final bytes = InnerEnvelope.buildMemberLeave(
+        chatId: 'g1', lamport: 7,
+        leftAt: DateTime.utc(2026, 5, 21), sigHex: 'cc',
+        senderDisplayName: 'Bob',
+      );
+      final p = InnerEnvelope.parse(bytes) as MemberLeaveEnvelope;
+      expect(p.senderDisplayName, 'Bob');
+    });
+  });
 }

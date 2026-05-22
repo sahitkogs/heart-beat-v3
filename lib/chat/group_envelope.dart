@@ -5,6 +5,13 @@ import 'dart:convert';
 /// - No whitespace.
 /// - Lists preserved in order.
 /// - Optionally omit a single top-level field (for stripping `sig` before sign/verify).
+///
+/// **Phase 10.4.1 note:** `senderDisplayName` is also stripped from
+/// canonical bytes for signed envelopes — it's informational and must not
+/// affect signature canonicalization. Callers pass it as a separate kwarg
+/// to the builders; signing happens over canonicalJsonBytes(body, omit: 'sig')
+/// which never sees `senderDisplayName` because the signing body doesn't
+/// include it in the first place.
 List<int> canonicalJsonBytes(Map<String, dynamic> obj, {String? omit}) {
   final entries = obj.entries
       .where((e) => omit == null || e.key != omit)
@@ -32,6 +39,12 @@ abstract class InnerEnvelope {
   String get chatId;
   int get lamport;
 
+  /// Optional human-readable name the sender claims for themselves. Added
+  /// in Phase 10.4.1; receivers use it to populate `contacts.claimedName`
+  /// for the libsignal-session sender pubkey. Informational, not
+  /// authenticated beyond the libsignal binding (see spec §3.5).
+  String? get senderDisplayName;
+
   /// Parse JSON bytes (post-libsignal-decrypt) into a typed envelope.
   /// Throws [FormatException] on unknown/missing fields or version mismatch.
   static InnerEnvelope parse(List<int> bytes) {
@@ -51,11 +64,15 @@ abstract class InnerEnvelope {
     if (chatId is! String || lamport is! int) {
       throw const FormatException('inner envelope missing chatId/lamport');
     }
+    final senderDisplayName = raw['senderDisplayName'] as String?;
     switch (type) {
       case 'text':
         final body = raw['body'];
         if (body is! String) throw const FormatException('text missing body');
-        return TextEnvelope(chatId: chatId, lamport: lamport, body: body);
+        return TextEnvelope(
+          chatId: chatId, lamport: lamport, body: body,
+          senderDisplayName: senderDisplayName,
+        );
       case 'group_invite':
         return GroupInviteEnvelope._fromJson(raw);
       case 'member_add':
@@ -73,10 +90,12 @@ abstract class InnerEnvelope {
     required String chatId,
     required int lamport,
     required String body,
+    String? senderDisplayName,
   }) {
     return utf8.encode(jsonEncode({
       'v': 1, 'type': 'text',
       'chatId': chatId, 'lamport': lamport, 'body': body,
+      'senderDisplayName': ?senderDisplayName,
     }));
   }
 
@@ -90,6 +109,7 @@ abstract class InnerEnvelope {
     required String joinedVia, // 'create' | 'add'
     required String sigHex,
     int lamport = 0,
+    String? senderDisplayName,
   }) {
     return utf8.encode(jsonEncode({
       'v': 1, 'type': 'group_invite',
@@ -101,6 +121,7 @@ abstract class InnerEnvelope {
       'opSeq': opSeq,
       'joinedVia': joinedVia,
       'sig': sigHex,
+      'senderDisplayName': ?senderDisplayName,
     }));
   }
 
@@ -111,6 +132,7 @@ abstract class InnerEnvelope {
     required DateTime addedAt,
     required int opSeq,
     required String sigHex,
+    String? senderDisplayName,
   }) {
     return utf8.encode(jsonEncode({
       'v': 1, 'type': 'member_add',
@@ -119,6 +141,7 @@ abstract class InnerEnvelope {
       'addedAt': addedAt.toUtc().toIso8601String(),
       'opSeq': opSeq,
       'sig': sigHex,
+      'senderDisplayName': ?senderDisplayName,
     }));
   }
 
@@ -129,6 +152,7 @@ abstract class InnerEnvelope {
     required DateTime removedAt,
     required int opSeq,
     required String sigHex,
+    String? senderDisplayName,
   }) {
     return utf8.encode(jsonEncode({
       'v': 1, 'type': 'member_remove',
@@ -137,6 +161,7 @@ abstract class InnerEnvelope {
       'removedAt': removedAt.toUtc().toIso8601String(),
       'opSeq': opSeq,
       'sig': sigHex,
+      'senderDisplayName': ?senderDisplayName,
     }));
   }
 
@@ -145,21 +170,29 @@ abstract class InnerEnvelope {
     required int lamport,
     required DateTime leftAt,
     required String sigHex,
+    String? senderDisplayName,
   }) {
     return utf8.encode(jsonEncode({
       'v': 1, 'type': 'member_leave',
       'chatId': chatId, 'lamport': lamport,
       'leftAt': leftAt.toUtc().toIso8601String(),
       'sig': sigHex,
+      'senderDisplayName': ?senderDisplayName,
     }));
   }
 }
 
 class TextEnvelope implements InnerEnvelope {
-  TextEnvelope({required this.chatId, required this.lamport, required this.body});
+  TextEnvelope({
+    required this.chatId,
+    required this.lamport,
+    required this.body,
+    this.senderDisplayName,
+  });
   @override final String chatId;
   @override final int lamport;
   final String body;
+  @override final String? senderDisplayName;
 }
 
 class GroupInviteEnvelope implements InnerEnvelope {
@@ -167,6 +200,7 @@ class GroupInviteEnvelope implements InnerEnvelope {
     required this.chatId, required this.lamport, required this.groupName,
     required this.creator, required this.members, required this.createdAt,
     required this.opSeq, required this.joinedVia, required this.sigHex,
+    this.senderDisplayName,
   });
   factory GroupInviteEnvelope._fromJson(Map<String, dynamic> raw) {
     return GroupInviteEnvelope(
@@ -179,6 +213,7 @@ class GroupInviteEnvelope implements InnerEnvelope {
       opSeq: raw['opSeq'] as int,
       joinedVia: raw['joinedVia'] as String,
       sigHex: raw['sig'] as String,
+      senderDisplayName: raw['senderDisplayName'] as String?,
     );
   }
   @override final String chatId;
@@ -190,12 +225,14 @@ class GroupInviteEnvelope implements InnerEnvelope {
   final int opSeq;
   final String joinedVia;
   final String sigHex;
+  @override final String? senderDisplayName;
 }
 
 class MemberAddEnvelope implements InnerEnvelope {
   MemberAddEnvelope({
     required this.chatId, required this.lamport, required this.target,
     required this.addedAt, required this.opSeq, required this.sigHex,
+    this.senderDisplayName,
   });
   factory MemberAddEnvelope._fromJson(Map<String, dynamic> raw) => MemberAddEnvelope(
     chatId: raw['chatId'] as String,
@@ -204,6 +241,7 @@ class MemberAddEnvelope implements InnerEnvelope {
     addedAt: DateTime.parse(raw['addedAt'] as String),
     opSeq: raw['opSeq'] as int,
     sigHex: raw['sig'] as String,
+    senderDisplayName: raw['senderDisplayName'] as String?,
   );
   @override final String chatId;
   @override final int lamport;
@@ -211,12 +249,14 @@ class MemberAddEnvelope implements InnerEnvelope {
   final DateTime addedAt;
   final int opSeq;
   final String sigHex;
+  @override final String? senderDisplayName;
 }
 
 class MemberRemoveEnvelope implements InnerEnvelope {
   MemberRemoveEnvelope({
     required this.chatId, required this.lamport, required this.target,
     required this.removedAt, required this.opSeq, required this.sigHex,
+    this.senderDisplayName,
   });
   factory MemberRemoveEnvelope._fromJson(Map<String, dynamic> raw) => MemberRemoveEnvelope(
     chatId: raw['chatId'] as String,
@@ -225,6 +265,7 @@ class MemberRemoveEnvelope implements InnerEnvelope {
     removedAt: DateTime.parse(raw['removedAt'] as String),
     opSeq: raw['opSeq'] as int,
     sigHex: raw['sig'] as String,
+    senderDisplayName: raw['senderDisplayName'] as String?,
   );
   @override final String chatId;
   @override final int lamport;
@@ -232,21 +273,25 @@ class MemberRemoveEnvelope implements InnerEnvelope {
   final DateTime removedAt;
   final int opSeq;
   final String sigHex;
+  @override final String? senderDisplayName;
 }
 
 class MemberLeaveEnvelope implements InnerEnvelope {
   MemberLeaveEnvelope({
     required this.chatId, required this.lamport,
     required this.leftAt, required this.sigHex,
+    this.senderDisplayName,
   });
   factory MemberLeaveEnvelope._fromJson(Map<String, dynamic> raw) => MemberLeaveEnvelope(
     chatId: raw['chatId'] as String,
     lamport: raw['lamport'] as int,
     leftAt: DateTime.parse(raw['leftAt'] as String),
     sigHex: raw['sig'] as String,
+    senderDisplayName: raw['senderDisplayName'] as String?,
   );
   @override final String chatId;
   @override final int lamport;
   final DateTime leftAt;
   final String sigHex;
+  @override final String? senderDisplayName;
 }
