@@ -25,6 +25,7 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
 
   _Mode _mode = _Mode.camera;
   final TextEditingController _pasteCtrl = TextEditingController();
+  final TextEditingController _nicknameCtrl = TextEditingController();
   String? _pasteError;
   bool _saving = false;
 
@@ -59,6 +60,7 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
     _controller.removeListener(_onControllerStateChanged);
     _controller.dispose();
     _pasteCtrl.dispose();
+    _nicknameCtrl.dispose();
     super.dispose();
   }
 
@@ -94,7 +96,12 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
   // [[v3-paste-pubkey-pairing]] memory before raising the bar.
   Future<void> _saveAndPop(String pubkeyHex) async {
     final repo = ref.read(contactsRepositoryProvider);
-    await repo.add(Contact(pubkeyHex: pubkeyHex, addedAt: DateTime.now()));
+    final nick = _nicknameCtrl.text.trim();
+    await repo.add(Contact(
+      pubkeyHex: pubkeyHex,
+      addedAt: DateTime.now(),
+      displayName: nick.isEmpty ? null : nick,
+    ));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Contact added')),
@@ -243,6 +250,16 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 20),
+          TextField(
+            controller: _nicknameCtrl,
+            maxLength: 40,
+            decoration: const InputDecoration(
+              labelText: 'Nickname (optional)',
+              hintText: 'What to call this person',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
           TextField(
             controller: _pasteCtrl,
             maxLines: 3,
