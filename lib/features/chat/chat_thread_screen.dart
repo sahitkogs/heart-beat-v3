@@ -2,16 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/app_database.dart';
+import '../../data/models/contact.dart' as model;
+import '../../util/display_name.dart';
+import '../contacts/contacts_provider.dart';
 import '../identity/identity_provider.dart';
 import 'chat_thread_provider.dart';
 import 'composer.dart';
 import 'group_settings_screen.dart';
 import 'message_bubble.dart';
 import 'message_service_provider.dart';
-
-String _shortPk(String hex) => hex.length >= 16
-    ? '${hex.substring(0, 8)}…${hex.substring(hex.length - 8)}'
-    : hex;
 
 class ChatThreadScreen extends ConsumerStatefulWidget {
   const ChatThreadScreen({super.key, required this.chatId});
@@ -31,10 +30,15 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     final messagesAsync = ref.watch(chatThreadProvider(widget.chatId));
     final messageSvcAsync = ref.watch(messageServiceProvider);
     final chatAsync = ref.watch(chatProvider(widget.chatId));
+    final contactsAsync = ref.watch(contactsListProvider);
 
     final chat = chatAsync.valueOrNull;
     final isGroup = chat?.kind == 'group';
     final hasLeft = chat?.leftAt != null;
+    final contactsByPk = contactsAsync.maybeWhen(
+      data: (list) => {for (final c in list) c.pubkeyHex: c},
+      orElse: () => <String, model.Contact>{},
+    );
 
     // Once the MessageService resolves, kick off a one-shot openChat() for
     // direct chats so both sides exchange PreKey bundles before the user types.
@@ -59,10 +63,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
         child: Text(chat!.groupName ?? '(unnamed group)'),
       );
     } else {
-      titleWidget = Text(
-        _shortPk(widget.chatId),
-        style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
-      );
+      titleWidget = Text(resolveName(widget.chatId, contactsByPk[widget.chatId]));
     }
 
     return Scaffold(
@@ -99,7 +100,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
 
                     final fromMe = m.senderPubkeyHex == me;
                     final label = isGroup
-                        ? _showSenderLabel(m, prev, me, chat)
+                        ? _showSenderLabel(m, prev, me, chat, contactsByPk)
                         : null;
 
                     return MessageBubble(
@@ -121,22 +122,23 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
 
   /// Returns the sender label string for an incoming group bubble, or null
   /// if the label should be suppressed (same sender as previous visible bubble).
+  /// Resolves the sender's name via the resolveName helper (Phase 10.4.1).
   String? _showSenderLabel(
     Message m,
     Message? prev,
     String me,
     Chat? chat,
+    Map<String, model.Contact> contacts,
   ) {
     if (chat?.kind != 'group') return null;
     if (m.senderPubkeyHex == me) return null; // outgoing
     if (m.kind != 'text') return null; // system rows handled separately
-    if (prev == null) return _shortPk(m.senderPubkeyHex);
+    final label = resolveName(m.senderPubkeyHex, contacts[m.senderPubkeyHex]);
+    if (prev == null) return label;
     // Suppress only if the previous visible incoming text bubble was same sender.
-    if (prev.kind != 'text') return _shortPk(m.senderPubkeyHex);
-    if (prev.senderPubkeyHex == me) return _shortPk(m.senderPubkeyHex);
-    if (prev.senderPubkeyHex != m.senderPubkeyHex) {
-      return _shortPk(m.senderPubkeyHex);
-    }
+    if (prev.kind != 'text') return label;
+    if (prev.senderPubkeyHex == me) return label;
+    if (prev.senderPubkeyHex != m.senderPubkeyHex) return label;
     return null; // same sender consecutively — suppress repeat label
   }
 
