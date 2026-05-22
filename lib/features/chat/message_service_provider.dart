@@ -51,6 +51,7 @@ final messageServiceProvider = FutureProvider<MessageService>((ref) async {
   final groupOpsLogDao = ref.watch(groupOpsLogDaoProvider);
   final signing = ref.watch(signingServiceProvider);
   final contactsRepository = ref.watch(contactsRepositoryProvider);
+  final profileDao = ref.watch(profileDaoProvider);
   final svc = MessageService(
     crypto: crypto,
     relay: relay,
@@ -62,6 +63,7 @@ final messageServiceProvider = FutureProvider<MessageService>((ref) async {
     groupOpsLogDao: groupOpsLogDao,
     signing: signing,
     contactsRepository: contactsRepository,
+    profileDao: profileDao,
   );
   ref.onDispose(() => svc.dispose());
   return svc;

@@ -13,6 +13,7 @@ import 'package:app_v3/data/group_members_dao.dart';
 import 'package:app_v3/data/group_ops_log_dao.dart';
 import 'package:app_v3/data/models/contact.dart' as contact_model;
 import 'package:app_v3/data/peer_bundle_state_dao.dart';
+import 'package:app_v3/data/profile_dao.dart';
 import 'package:app_v3/relay/relay_client.dart';
 import 'package:app_v3/relay/relay_frames.dart';
 import 'package:app_v3/services/crypto_pre_key_bundle.dart';
@@ -129,6 +130,10 @@ class _FakeCrypto implements CryptoService {
   int encryptCalls = 0;
   int decryptCalls = 0;
   final List<CryptoPreKeyBundle> processedBundles = [];
+  /// Each encrypt() call appends its plaintext here. Used by T5.2 tests to
+  /// inspect what was about to be sent on the wire (post-libsignal, the
+  /// only thing tests can usefully assert is the JSON inner envelope).
+  final List<List<int>> encryptedPlaintexts = [];
 
   static const _sampleBundle = CryptoPreKeyBundle(
     ownerPubkeyHex: '',
@@ -159,6 +164,7 @@ class _FakeCrypto implements CryptoService {
     required List<int> plaintext,
   }) async {
     encryptCalls++;
+    encryptedPlaintexts.add(List<int>.from(plaintext));
     return [0xCC, ...plaintext];
   }
 
@@ -269,6 +275,7 @@ void main() {
       groupOpsLogDao: groupOpsLogDao,
       signing: signing,
       contactsRepository: contactsRepo,
+      profileDao: ProfileDao(db),
     );
   });
 
@@ -458,6 +465,7 @@ void main() {
         groupOpsLogDao: groupOpsLogDao,
         signing: signing,
         contactsRepository: contactsRepo,
+        profileDao: ProfileDao(db),
       );
       // After this point any inbound from `relay` flows through wakeService.
     }
@@ -689,6 +697,44 @@ void main() {
     });
   });
 
+  group('senderDisplayName in outbound envelopes (T5.2)', () {
+    Future<void> bootstrap() async {
+      relay.emit(DeliverFrame(
+        fromPubkeyHex: peerPub,
+        envelope: EnvelopeWire.wrapPreKeyBundle(peerBundle()),
+      ));
+      await drainMicrotasks();
+    }
+
+    test('sendText includes profile.displayName in the inner envelope',
+        () async {
+      // Seed profile with a name.
+      await ProfileDao(db).setDisplayName('Alice');
+      await bootstrap();
+
+      await service.sendText(peerPubkeyHex: peerPub, body: 'hi');
+
+      // Read the captured plaintext from FakeCrypto.
+      expect(crypto.encryptedPlaintexts, isNotEmpty);
+      final inner =
+          InnerEnvelope.parse(crypto.encryptedPlaintexts.last) as TextEnvelope;
+      expect(inner.body, 'hi');
+      expect(inner.senderDisplayName, 'Alice');
+    });
+
+    test('sendText emits senderDisplayName=null when no profile row exists',
+        () async {
+      // No ProfileDao.setDisplayName call — profile row is absent.
+      await bootstrap();
+
+      await service.sendText(peerPubkeyHex: peerPub, body: 'hi');
+
+      final inner =
+          InnerEnvelope.parse(crypto.encryptedPlaintexts.last) as TextEnvelope;
+      expect(inner.senderDisplayName, isNull);
+    });
+  });
+
   group('createGroup (T5.1)', () {
     final peerB = 'bb' * 32;
     final peerC = 'cc' * 32;
@@ -904,6 +950,7 @@ void main() {
         groupOpsLogDao: groupOpsLogDao,
         signing: signing,
         contactsRepository: contactsRepo,
+        profileDao: ProfileDao(db),
       );
 
       final gid = await setUpGroup();
@@ -2890,6 +2937,7 @@ void main() {
         groupOpsLogDao: GroupOpsLogDao(db1),
         signing: signing,
         contactsRepository: ContactsRepository(db1),
+        profileDao: ProfileDao(db1),
       );
 
       await service1.openChat(peerPub);
@@ -2924,6 +2972,7 @@ void main() {
         groupOpsLogDao: GroupOpsLogDao(db2),
         signing: signing,
         contactsRepository: ContactsRepository(db2),
+        profileDao: ProfileDao(db2),
       );
 
       // openChat in session 2 must NOT emit a bundle because bundleSentAt

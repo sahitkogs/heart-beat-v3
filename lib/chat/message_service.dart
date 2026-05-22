@@ -11,6 +11,7 @@ import '../data/contacts_repository.dart';
 import '../data/group_members_dao.dart';
 import '../data/group_ops_log_dao.dart';
 import '../data/peer_bundle_state_dao.dart';
+import '../data/profile_dao.dart';
 import '../relay/relay_client.dart';
 import '../relay/relay_frames.dart';
 import '../services/crypto_service.dart';
@@ -32,6 +33,7 @@ class MessageService {
     required this.groupOpsLogDao,
     required this.signing,
     required this.contactsRepository,
+    required this.profileDao,
     this.wake,
   }) {
     _sub = relay.inbound.listen(_onInbound);
@@ -46,6 +48,7 @@ class MessageService {
   final GroupOpsLogDao groupOpsLogDao;
   final SigningService signing;
   final ContactsRepository contactsRepository;
+  final ProfileDao profileDao;
   // Optional in tests; production wiring always supplies one via the
   // messageServiceProvider. When null, recipient_offline errors are logged
   // but no wake fallback fires.
@@ -92,12 +95,14 @@ class MessageService {
     // Compute lamport once; use it for both the persisted row and the
     // JSON inner envelope so they stay in sync.
     final lamport = await dao.bumpLamport(peerPubkeyHex);
+    final myName = await _currentDisplayName();
     // chatId in the inner envelope is OUR pubkey (the sender's key), so that
     // the receiver's spoof guard (inner.chatId == frame.fromPubkeyHex) passes.
     final jsonBytes = InnerEnvelope.buildText(
       chatId: myPubkeyHex,
       lamport: lamport,
       body: body,
+      senderDisplayName: myName,
     );
     await _persistOutbound(peerPubkeyHex, body, lamport);
 
@@ -178,10 +183,12 @@ class MessageService {
     final canonical = canonicalJsonBytes(inviteBody);
     final sigBytes = await signing.sign(canonical);
     final sigHex = bytesToHex(sigBytes);
+    final myName = await _currentDisplayName();
     final inviteBytes = InnerEnvelope.buildGroupInvite(
       chatId: chatId, groupName: name, creator: myPubkeyHex,
       members: members, createdAt: now,
       opSeq: initialOpSeq, joinedVia: 'create', sigHex: sigHex,
+      senderDisplayName: myName,
     );
 
     await groupOpsLogDao.append(
@@ -247,8 +254,10 @@ class MessageService {
     ));
     await dao.updateLastMessage(chatId, _preview(body), now);
 
+    final myName = await _currentDisplayName();
     final jsonBytes = InnerEnvelope.buildText(
       chatId: chatId, lamport: lamport, body: body,
+      senderDisplayName: myName,
     );
 
     _log('sendGroupText chatId=${_short(chatId)} recipients=${recipients.length} '
@@ -322,9 +331,11 @@ class MessageService {
     final addCanonical = canonicalJsonBytes(addBody);
     final addSig = await signing.sign(addCanonical);
     final addSigHex = bytesToHex(addSig);
+    final myName = await _currentDisplayName();
     final addBytes = InnerEnvelope.buildMemberAdd(
       chatId: chatId, lamport: lamport, target: newMemberPubkeyHex,
       addedAt: now, opSeq: newOpSeq, sigHex: addSigHex,
+      senderDisplayName: myName,
     );
 
     // Build + sign group_invite (for new joiner) with the UPDATED members list.
@@ -350,6 +361,7 @@ class MessageService {
       chatId: chatId, groupName: chat.groupName!, creator: myPubkeyHex,
       members: updatedMembers, createdAt: chat.createdAt,
       opSeq: newOpSeq, joinedVia: 'add', sigHex: inviteSigHex,
+      senderDisplayName: myName,
       // lamport defaults to 0
     );
 
@@ -453,9 +465,11 @@ class MessageService {
     final canonical = canonicalJsonBytes(removeBody);
     final sigBytes = await signing.sign(canonical);
     final sigHex = bytesToHex(sigBytes);
+    final myName = await _currentDisplayName();
     final removeBytes = InnerEnvelope.buildMemberRemove(
       chatId: chatId, lamport: lamport, target: targetPubkeyHex,
       removedAt: now, opSeq: newOpSeq, sigHex: sigHex,
+      senderDisplayName: myName,
     );
 
     await groupOpsLogDao.append(
@@ -537,9 +551,11 @@ class MessageService {
     final canonical = canonicalJsonBytes(leaveBody);
     final sigBytes = await signing.sign(canonical);
     final sigHex = bytesToHex(sigBytes);
+    final myName = await _currentDisplayName();
     final leaveBytes = InnerEnvelope.buildMemberLeave(
       chatId: chatId, lamport: lamport,
       leftAt: now, sigHex: sigHex,
+      senderDisplayName: myName,
     );
 
     await groupOpsLogDao.append(
@@ -1360,6 +1376,16 @@ class MessageService {
     );
     _log('member_leave accepted chat=${_short(inv.chatId)} '
         'signer=${_short(frame.fromPubkeyHex)}');
+  }
+
+  /// Reads the local user's current display name from drift. Returns null
+  /// if no profile row exists (shouldn't happen post-bootstrap — the
+  /// StartupRouter forces DisplayNameSetupScreen before any chat path is
+  /// reachable — but defensive). Reading per-send is cheap (single SQLite
+  /// lookup, microseconds) and stays fresh after rename.
+  Future<String?> _currentDisplayName() async {
+    final row = await profileDao.get();
+    return row?.displayName;
   }
 
   String _preview(String body) =>
