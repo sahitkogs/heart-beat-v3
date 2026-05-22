@@ -1,0 +1,13 @@
+flutter_native_splash:
+  color: "#F4EDE0"
+  color_dark: "#161412"
+  image: "assets/icon/heartbeat-icon-fg.png"
+  image_dark: "assets/icon/heartbeat-icon-fg.png"
+  android_12:
+    image: "assets/icon/heartbeat-icon-fg.png"
+    color: "#F4EDE0"
+    image_dark: "assets/icon/heartbeat-icon-fg.png"
+    color_dark: "#161412"
+  android: true
+  ios: false
+  fullscreen: false
