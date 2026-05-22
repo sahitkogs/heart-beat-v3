@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../chat/chat_providers.dart';
+import '../../theme/theme_mode_provider.dart';
 import 'identity_provider.dart';
 
 class IdentityScreen extends ConsumerWidget {
@@ -90,6 +91,8 @@ class _IdentityBodyState extends ConsumerState<_IdentityBody> {
             ),
             const SizedBox(height: 24),
             const Divider(),
+            const _ThemeToggle(),
+            const Divider(),
             const SizedBox(height: 16),
             const Text(
               'Show this to someone you want to chat with. They scan it from their Add Contact screen.',
@@ -126,6 +129,24 @@ class _IdentityBodyState extends ConsumerState<_IdentityBody> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ThemeToggle extends ConsumerWidget {
+  const _ThemeToggle();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(themeModeProvider);
+    final isDark = mode == ThemeMode.dark;
+    return SwitchListTile(
+      contentPadding: EdgeInsets.zero,
+      title: const Text('Dark mode'),
+      subtitle: Text(isDark ? 'Currently dark' : 'Currently light'),
+      secondary: Icon(isDark ? Icons.dark_mode : Icons.light_mode),
+      value: isDark,
+      onChanged: (_) => ref.read(themeModeProvider.notifier).toggle(),
     );
   }
 }

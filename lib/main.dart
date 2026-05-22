@@ -11,6 +11,7 @@ import 'firebase_options.dart';
 import 'services/background_message_handler.dart';
 import 'services/notifications_service.dart';
 import 'theme/app_theme.dart';
+import 'theme/theme_mode_provider.dart';
 
 /// Global navigator key used by the notification tap handler to push the
 /// chat thread from a `BuildContext`-less callback (NotificationsService).
@@ -80,7 +81,7 @@ Future<void> main() async {
       child: HeartbeatV3App(coldLaunchChatId: coldLaunchChatId)));
 }
 
-class HeartbeatV3App extends StatefulWidget {
+class HeartbeatV3App extends ConsumerStatefulWidget {
   const HeartbeatV3App({super.key, this.coldLaunchChatId});
 
   /// Chat id (direct = peer pubkey hex, group = group hex id) carried over
@@ -89,10 +90,10 @@ class HeartbeatV3App extends StatefulWidget {
   final String? coldLaunchChatId;
 
   @override
-  State<HeartbeatV3App> createState() => _HeartbeatV3AppState();
+  ConsumerState<HeartbeatV3App> createState() => _HeartbeatV3AppState();
 }
 
-class _HeartbeatV3AppState extends State<HeartbeatV3App> {
+class _HeartbeatV3AppState extends ConsumerState<HeartbeatV3App> {
   @override
   void initState() {
     super.initState();
@@ -107,9 +108,12 @@ class _HeartbeatV3AppState extends State<HeartbeatV3App> {
 
   @override
   Widget build(BuildContext context) {
+    final themeMode = ref.watch(themeModeProvider);
     return MaterialApp(
       title: 'Heartbeat v3',
-      theme: buildAppTheme(),
+      theme: buildLightTheme(),
+      darkTheme: buildDarkTheme(),
+      themeMode: themeMode,
       navigatorKey: rootNavigatorKey,
       routes: {
         '/chats': (_) => const ChatListScreen(),
