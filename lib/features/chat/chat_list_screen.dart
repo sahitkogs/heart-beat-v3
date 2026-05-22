@@ -51,7 +51,8 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     final chatsAsync = ref.watch(chatsStreamProvider);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Chats'),
+        title: const Text('Heart.Beat'),
+        centerTitle: false,
         actions: [
           IconButton(
             icon: const Icon(Icons.search),
