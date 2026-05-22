@@ -15,7 +15,12 @@ class ContactsRepository {
   Future<List<model.Contact>> loadAll() async {
     final rows = await _db.select(_db.contacts).get();
     return rows
-        .map((r) => model.Contact(pubkeyHex: r.pubkeyHex, addedAt: r.addedAt))
+        .map((r) => model.Contact(
+              pubkeyHex: r.pubkeyHex,
+              addedAt: r.addedAt,
+              displayName: r.displayName,
+              claimedName: r.claimedName,
+            ))
         .toList();
   }
 
@@ -24,8 +29,19 @@ class ContactsRepository {
           ContactsCompanion.insert(
             pubkeyHex: c.pubkeyHex,
             addedAt: c.addedAt,
+            displayName: Value(c.displayName),
+            claimedName: Value(c.claimedName),
           ),
           mode: InsertMode.insertOrIgnore, // idempotent on pubkeyHex
         );
+  }
+
+  /// Idempotent overwrite of [claimedName] for [pubkeyHex]. No-op if the
+  /// contact row doesn't exist (callers must check existence first per
+  /// spec §3.3 — names from non-contacts are silently dropped).
+  Future<void> updateClaimedName(String pubkeyHex, String claimedName) async {
+    await (_db.update(_db.contacts)
+          ..where((t) => t.pubkeyHex.equals(pubkeyHex)))
+        .write(ContactsCompanion(claimedName: Value(claimedName)));
   }
 }
