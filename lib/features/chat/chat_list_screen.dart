@@ -46,79 +46,108 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     super.dispose();
   }
 
+  void _closeSearch() {
+    setState(() {
+      _searchVisible = false;
+      _searchController.clear();
+    });
+  }
+
+  /// Smart X behavior: if the search field has any text, clear it (and keep
+  /// the bar open so the user can type a new query). If it's empty, close
+  /// the search bar entirely.
+  void _onSearchSuffixTap() {
+    if (_searchController.text.isEmpty) {
+      _closeSearch();
+    } else {
+      setState(() => _searchController.clear());
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final chatsAsync = ref.watch(chatsStreamProvider);
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Heart.Beat'),
-        centerTitle: false,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            tooltip: 'Search',
-            onPressed: () => setState(() {
-              _searchVisible = !_searchVisible;
-              if (!_searchVisible) _searchController.clear();
-            }),
-          ),
-          IconButton(
-            icon: const Icon(Icons.people_outline),
-            tooltip: 'Contacts',
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => const ContactsScreen(),
-            )),
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: 'My profile',
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => const IdentityScreen(),
-            )),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        tooltip: 'New conversation',
-        onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => const SelectContactScreen(),
-        )),
-        child: const Icon(Icons.edit),
-      ),
-      body: Column(
-        children: [
-          if (_searchVisible)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-              child: TextField(
-                controller: _searchController,
-                autofocus: true,
-                decoration: InputDecoration(
-                  hintText: 'Search chats',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() {});
-                    },
+    return PopScope(
+      // Intercept the Android back button when search is open so it
+      // collapses the search bar instead of popping the screen.
+      canPop: !_searchVisible,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _searchVisible) _closeSearch();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Heart.Beat'),
+          centerTitle: false,
+          actions: [
+            IconButton(
+              icon: Icon(_searchVisible ? Icons.search_off : Icons.search),
+              tooltip: _searchVisible ? 'Close search' : 'Search',
+              onPressed: () {
+                if (_searchVisible) {
+                  _closeSearch();
+                } else {
+                  setState(() => _searchVisible = true);
+                }
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.people_outline),
+              tooltip: 'Contacts',
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const ContactsScreen(),
+              )),
+            ),
+            IconButton(
+              icon: const Icon(Icons.settings),
+              tooltip: 'My profile',
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const IdentityScreen(),
+              )),
+            ),
+          ],
+        ),
+        floatingActionButton: FloatingActionButton(
+          tooltip: 'New conversation',
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => const SelectContactScreen(),
+          )),
+          child: const Icon(Icons.edit),
+        ),
+        body: Column(
+          children: [
+            if (_searchVisible)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: TextField(
+                  controller: _searchController,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: 'Search chats',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.close),
+                      tooltip: _searchController.text.isEmpty
+                          ? 'Close search'
+                          : 'Clear',
+                      onPressed: _onSearchSuffixTap,
+                    ),
+                    isDense: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
-                  isDense: true,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+                  onChanged: (_) => setState(() {}),
                 ),
-                onChanged: (_) => setState(() {}),
+              ),
+            Expanded(
+              child: chatsAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, _) => Center(child: Text('Error: $e')),
+                data: _buildList,
               ),
             ),
-          Expanded(
-            child: chatsAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e')),
-              data: _buildList,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
