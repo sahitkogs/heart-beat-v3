@@ -88,7 +88,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Heart.Beat'),
+          title: const Text('heart•beat'),
           centerTitle: false,
           actions: [
             IconButton(

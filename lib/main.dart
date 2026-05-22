@@ -133,7 +133,7 @@ class _HeartbeatV3AppState extends ConsumerState<HeartbeatV3App>
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeModeProvider);
     return MaterialApp(
-      title: 'Heartbeat v3',
+      title: 'heart•beat',
       theme: buildLightTheme(),
       darkTheme: buildDarkTheme(),
       themeMode: themeMode,
