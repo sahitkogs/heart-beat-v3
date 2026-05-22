@@ -10,9 +10,29 @@ part 'app_database.g.dart';
 class Contacts extends Table {
   TextColumn get pubkeyHex => text()();
   DateTimeColumn get addedAt => dateTime()();
+  // User-chosen nickname for this peer. Wins over claimedName in
+  // resolveName() — once the user typed a nickname (or kept the
+  // auto-filled one), peer-broadcasted name changes do not override.
+  TextColumn get displayName => text().nullable()();
+  // Last broadcast name received from this peer via an inbound
+  // envelope's senderDisplayName field. Informational, not
+  // authenticated beyond the libsignal-session sender binding.
+  TextColumn get claimedName => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {pubkeyHex};
+}
+
+/// Singleton row (id == 0) holding the local user's display name.
+/// Created the first time the user passes through DisplayNameSetupScreen
+/// on first launch. Row presence is the signal "displayName has been set."
+class Profile extends Table {
+  IntColumn get id => integer()();
+  TextColumn get displayName => text()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
 class Chats extends Table {
@@ -154,6 +174,7 @@ class PeerBundleState extends Table {
   GroupMembers,
   GroupOpsLog,
   PeerBundleState,
+  Profile,
   SignalIdentity,
   SignalPreKeys,
   SignalSignedPreKeys,
@@ -167,7 +188,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -224,6 +245,27 @@ class AppDatabase extends _$AppDatabase {
 
               // Add the kind column to messages.
               await m.addColumn(messages, messages.kind);
+            } else if (v == 5) {
+              // Destructive v5 -> v6 per spec §2.3. User explicitly opted
+              // out of backward compatibility; v3 is still dev-only.
+              for (final t in const [
+                'messages',
+                'chats',
+                'contacts',
+                'group_members',
+                'group_ops_log',
+                'peer_bundle_state',
+                'lamport_seq',
+                'signal_identity',
+                'signal_pre_keys',
+                'signal_signed_pre_keys',
+                'signal_sessions',
+                'signal_peer_identities',
+              ]) {
+                await customStatement('DROP TABLE IF EXISTS $t');
+              }
+              // createAll recreates every table from the current (v6) schema.
+              await m.createAll();
             }
           }
         },

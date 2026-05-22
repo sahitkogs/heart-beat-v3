@@ -30,8 +30,35 @@ class $ContactsTable extends Contacts with TableInfo<$ContactsTable, Contact> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _displayNameMeta = const VerificationMeta(
+    'displayName',
+  );
   @override
-  List<GeneratedColumn> get $columns => [pubkeyHex, addedAt];
+  late final GeneratedColumn<String> displayName = GeneratedColumn<String>(
+    'display_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _claimedNameMeta = const VerificationMeta(
+    'claimedName',
+  );
+  @override
+  late final GeneratedColumn<String> claimedName = GeneratedColumn<String>(
+    'claimed_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    pubkeyHex,
+    addedAt,
+    displayName,
+    claimedName,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -60,6 +87,24 @@ class $ContactsTable extends Contacts with TableInfo<$ContactsTable, Contact> {
     } else if (isInserting) {
       context.missing(_addedAtMeta);
     }
+    if (data.containsKey('display_name')) {
+      context.handle(
+        _displayNameMeta,
+        displayName.isAcceptableOrUnknown(
+          data['display_name']!,
+          _displayNameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('claimed_name')) {
+      context.handle(
+        _claimedNameMeta,
+        claimedName.isAcceptableOrUnknown(
+          data['claimed_name']!,
+          _claimedNameMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -77,6 +122,14 @@ class $ContactsTable extends Contacts with TableInfo<$ContactsTable, Contact> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}added_at'],
       )!,
+      displayName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}display_name'],
+      ),
+      claimedName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}claimed_name'],
+      ),
     );
   }
 
@@ -89,12 +142,25 @@ class $ContactsTable extends Contacts with TableInfo<$ContactsTable, Contact> {
 class Contact extends DataClass implements Insertable<Contact> {
   final String pubkeyHex;
   final DateTime addedAt;
-  const Contact({required this.pubkeyHex, required this.addedAt});
+  final String? displayName;
+  final String? claimedName;
+  const Contact({
+    required this.pubkeyHex,
+    required this.addedAt,
+    this.displayName,
+    this.claimedName,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['pubkey_hex'] = Variable<String>(pubkeyHex);
     map['added_at'] = Variable<DateTime>(addedAt);
+    if (!nullToAbsent || displayName != null) {
+      map['display_name'] = Variable<String>(displayName);
+    }
+    if (!nullToAbsent || claimedName != null) {
+      map['claimed_name'] = Variable<String>(claimedName);
+    }
     return map;
   }
 
@@ -102,6 +168,12 @@ class Contact extends DataClass implements Insertable<Contact> {
     return ContactsCompanion(
       pubkeyHex: Value(pubkeyHex),
       addedAt: Value(addedAt),
+      displayName: displayName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(displayName),
+      claimedName: claimedName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(claimedName),
     );
   }
 
@@ -113,6 +185,8 @@ class Contact extends DataClass implements Insertable<Contact> {
     return Contact(
       pubkeyHex: serializer.fromJson<String>(json['pubkeyHex']),
       addedAt: serializer.fromJson<DateTime>(json['addedAt']),
+      displayName: serializer.fromJson<String?>(json['displayName']),
+      claimedName: serializer.fromJson<String?>(json['claimedName']),
     );
   }
   @override
@@ -121,17 +195,32 @@ class Contact extends DataClass implements Insertable<Contact> {
     return <String, dynamic>{
       'pubkeyHex': serializer.toJson<String>(pubkeyHex),
       'addedAt': serializer.toJson<DateTime>(addedAt),
+      'displayName': serializer.toJson<String?>(displayName),
+      'claimedName': serializer.toJson<String?>(claimedName),
     };
   }
 
-  Contact copyWith({String? pubkeyHex, DateTime? addedAt}) => Contact(
+  Contact copyWith({
+    String? pubkeyHex,
+    DateTime? addedAt,
+    Value<String?> displayName = const Value.absent(),
+    Value<String?> claimedName = const Value.absent(),
+  }) => Contact(
     pubkeyHex: pubkeyHex ?? this.pubkeyHex,
     addedAt: addedAt ?? this.addedAt,
+    displayName: displayName.present ? displayName.value : this.displayName,
+    claimedName: claimedName.present ? claimedName.value : this.claimedName,
   );
   Contact copyWithCompanion(ContactsCompanion data) {
     return Contact(
       pubkeyHex: data.pubkeyHex.present ? data.pubkeyHex.value : this.pubkeyHex,
       addedAt: data.addedAt.present ? data.addedAt.value : this.addedAt,
+      displayName: data.displayName.present
+          ? data.displayName.value
+          : this.displayName,
+      claimedName: data.claimedName.present
+          ? data.claimedName.value
+          : this.claimedName,
     );
   }
 
@@ -139,44 +228,58 @@ class Contact extends DataClass implements Insertable<Contact> {
   String toString() {
     return (StringBuffer('Contact(')
           ..write('pubkeyHex: $pubkeyHex, ')
-          ..write('addedAt: $addedAt')
+          ..write('addedAt: $addedAt, ')
+          ..write('displayName: $displayName, ')
+          ..write('claimedName: $claimedName')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(pubkeyHex, addedAt);
+  int get hashCode => Object.hash(pubkeyHex, addedAt, displayName, claimedName);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Contact &&
           other.pubkeyHex == this.pubkeyHex &&
-          other.addedAt == this.addedAt);
+          other.addedAt == this.addedAt &&
+          other.displayName == this.displayName &&
+          other.claimedName == this.claimedName);
 }
 
 class ContactsCompanion extends UpdateCompanion<Contact> {
   final Value<String> pubkeyHex;
   final Value<DateTime> addedAt;
+  final Value<String?> displayName;
+  final Value<String?> claimedName;
   final Value<int> rowid;
   const ContactsCompanion({
     this.pubkeyHex = const Value.absent(),
     this.addedAt = const Value.absent(),
+    this.displayName = const Value.absent(),
+    this.claimedName = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ContactsCompanion.insert({
     required String pubkeyHex,
     required DateTime addedAt,
+    this.displayName = const Value.absent(),
+    this.claimedName = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : pubkeyHex = Value(pubkeyHex),
        addedAt = Value(addedAt);
   static Insertable<Contact> custom({
     Expression<String>? pubkeyHex,
     Expression<DateTime>? addedAt,
+    Expression<String>? displayName,
+    Expression<String>? claimedName,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (pubkeyHex != null) 'pubkey_hex': pubkeyHex,
       if (addedAt != null) 'added_at': addedAt,
+      if (displayName != null) 'display_name': displayName,
+      if (claimedName != null) 'claimed_name': claimedName,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -184,11 +287,15 @@ class ContactsCompanion extends UpdateCompanion<Contact> {
   ContactsCompanion copyWith({
     Value<String>? pubkeyHex,
     Value<DateTime>? addedAt,
+    Value<String?>? displayName,
+    Value<String?>? claimedName,
     Value<int>? rowid,
   }) {
     return ContactsCompanion(
       pubkeyHex: pubkeyHex ?? this.pubkeyHex,
       addedAt: addedAt ?? this.addedAt,
+      displayName: displayName ?? this.displayName,
+      claimedName: claimedName ?? this.claimedName,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -202,6 +309,12 @@ class ContactsCompanion extends UpdateCompanion<Contact> {
     if (addedAt.present) {
       map['added_at'] = Variable<DateTime>(addedAt.value);
     }
+    if (displayName.present) {
+      map['display_name'] = Variable<String>(displayName.value);
+    }
+    if (claimedName.present) {
+      map['claimed_name'] = Variable<String>(claimedName.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -213,6 +326,8 @@ class ContactsCompanion extends UpdateCompanion<Contact> {
     return (StringBuffer('ContactsCompanion(')
           ..write('pubkeyHex: $pubkeyHex, ')
           ..write('addedAt: $addedAt, ')
+          ..write('displayName: $displayName, ')
+          ..write('claimedName: $claimedName, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2781,6 +2896,257 @@ class PeerBundleStateCompanion extends UpdateCompanion<PeerBundleStateData> {
   }
 }
 
+class $ProfileTable extends Profile with TableInfo<$ProfileTable, ProfileData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ProfileTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _displayNameMeta = const VerificationMeta(
+    'displayName',
+  );
+  @override
+  late final GeneratedColumn<String> displayName = GeneratedColumn<String>(
+    'display_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, displayName, updatedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'profile';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ProfileData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('display_name')) {
+      context.handle(
+        _displayNameMeta,
+        displayName.isAcceptableOrUnknown(
+          data['display_name']!,
+          _displayNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_displayNameMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ProfileData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ProfileData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      displayName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}display_name'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ProfileTable createAlias(String alias) {
+    return $ProfileTable(attachedDatabase, alias);
+  }
+}
+
+class ProfileData extends DataClass implements Insertable<ProfileData> {
+  final int id;
+  final String displayName;
+  final DateTime updatedAt;
+  const ProfileData({
+    required this.id,
+    required this.displayName,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['display_name'] = Variable<String>(displayName);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  ProfileCompanion toCompanion(bool nullToAbsent) {
+    return ProfileCompanion(
+      id: Value(id),
+      displayName: Value(displayName),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory ProfileData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ProfileData(
+      id: serializer.fromJson<int>(json['id']),
+      displayName: serializer.fromJson<String>(json['displayName']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'displayName': serializer.toJson<String>(displayName),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  ProfileData copyWith({int? id, String? displayName, DateTime? updatedAt}) =>
+      ProfileData(
+        id: id ?? this.id,
+        displayName: displayName ?? this.displayName,
+        updatedAt: updatedAt ?? this.updatedAt,
+      );
+  ProfileData copyWithCompanion(ProfileCompanion data) {
+    return ProfileData(
+      id: data.id.present ? data.id.value : this.id,
+      displayName: data.displayName.present
+          ? data.displayName.value
+          : this.displayName,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProfileData(')
+          ..write('id: $id, ')
+          ..write('displayName: $displayName, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, displayName, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ProfileData &&
+          other.id == this.id &&
+          other.displayName == this.displayName &&
+          other.updatedAt == this.updatedAt);
+}
+
+class ProfileCompanion extends UpdateCompanion<ProfileData> {
+  final Value<int> id;
+  final Value<String> displayName;
+  final Value<DateTime> updatedAt;
+  const ProfileCompanion({
+    this.id = const Value.absent(),
+    this.displayName = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  ProfileCompanion.insert({
+    this.id = const Value.absent(),
+    required String displayName,
+    required DateTime updatedAt,
+  }) : displayName = Value(displayName),
+       updatedAt = Value(updatedAt);
+  static Insertable<ProfileData> custom({
+    Expression<int>? id,
+    Expression<String>? displayName,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (displayName != null) 'display_name': displayName,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  ProfileCompanion copyWith({
+    Value<int>? id,
+    Value<String>? displayName,
+    Value<DateTime>? updatedAt,
+  }) {
+    return ProfileCompanion(
+      id: id ?? this.id,
+      displayName: displayName ?? this.displayName,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (displayName.present) {
+      map['display_name'] = Variable<String>(displayName.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProfileCompanion(')
+          ..write('id: $id, ')
+          ..write('displayName: $displayName, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $SignalIdentityTable extends SignalIdentity
     with TableInfo<$SignalIdentityTable, SignalIdentityData> {
   @override
@@ -4008,6 +4374,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PeerBundleStateTable peerBundleState = $PeerBundleStateTable(
     this,
   );
+  late final $ProfileTable profile = $ProfileTable(this);
   late final $SignalIdentityTable signalIdentity = $SignalIdentityTable(this);
   late final $SignalPreKeysTable signalPreKeys = $SignalPreKeysTable(this);
   late final $SignalSignedPreKeysTable signalSignedPreKeys =
@@ -4027,6 +4394,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     groupMembers,
     groupOpsLog,
     peerBundleState,
+    profile,
     signalIdentity,
     signalPreKeys,
     signalSignedPreKeys,
@@ -4042,12 +4410,16 @@ typedef $$ContactsTableCreateCompanionBuilder =
     ContactsCompanion Function({
       required String pubkeyHex,
       required DateTime addedAt,
+      Value<String?> displayName,
+      Value<String?> claimedName,
       Value<int> rowid,
     });
 typedef $$ContactsTableUpdateCompanionBuilder =
     ContactsCompanion Function({
       Value<String> pubkeyHex,
       Value<DateTime> addedAt,
+      Value<String?> displayName,
+      Value<String?> claimedName,
       Value<int> rowid,
     });
 
@@ -4067,6 +4439,16 @@ class $$ContactsTableFilterComposer
 
   ColumnFilters<DateTime> get addedAt => $composableBuilder(
     column: $table.addedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get claimedName => $composableBuilder(
+    column: $table.claimedName,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -4089,6 +4471,16 @@ class $$ContactsTableOrderingComposer
     column: $table.addedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get claimedName => $composableBuilder(
+    column: $table.claimedName,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ContactsTableAnnotationComposer
@@ -4105,6 +4497,16 @@ class $$ContactsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get addedAt =>
       $composableBuilder(column: $table.addedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get claimedName => $composableBuilder(
+    column: $table.claimedName,
+    builder: (column) => column,
+  );
 }
 
 class $$ContactsTableTableManager
@@ -4137,20 +4539,28 @@ class $$ContactsTableTableManager
               ({
                 Value<String> pubkeyHex = const Value.absent(),
                 Value<DateTime> addedAt = const Value.absent(),
+                Value<String?> displayName = const Value.absent(),
+                Value<String?> claimedName = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ContactsCompanion(
                 pubkeyHex: pubkeyHex,
                 addedAt: addedAt,
+                displayName: displayName,
+                claimedName: claimedName,
                 rowid: rowid,
               ),
           createCompanionCallback:
               ({
                 required String pubkeyHex,
                 required DateTime addedAt,
+                Value<String?> displayName = const Value.absent(),
+                Value<String?> claimedName = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ContactsCompanion.insert(
                 pubkeyHex: pubkeyHex,
                 addedAt: addedAt,
+                displayName: displayName,
+                claimedName: claimedName,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -5514,6 +5924,161 @@ typedef $$PeerBundleStateTableProcessedTableManager =
       PeerBundleStateData,
       PrefetchHooks Function()
     >;
+typedef $$ProfileTableCreateCompanionBuilder =
+    ProfileCompanion Function({
+      Value<int> id,
+      required String displayName,
+      required DateTime updatedAt,
+    });
+typedef $$ProfileTableUpdateCompanionBuilder =
+    ProfileCompanion Function({
+      Value<int> id,
+      Value<String> displayName,
+      Value<DateTime> updatedAt,
+    });
+
+class $$ProfileTableFilterComposer
+    extends Composer<_$AppDatabase, $ProfileTable> {
+  $$ProfileTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ProfileTableOrderingComposer
+    extends Composer<_$AppDatabase, $ProfileTable> {
+  $$ProfileTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ProfileTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ProfileTable> {
+  $$ProfileTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$ProfileTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ProfileTable,
+          ProfileData,
+          $$ProfileTableFilterComposer,
+          $$ProfileTableOrderingComposer,
+          $$ProfileTableAnnotationComposer,
+          $$ProfileTableCreateCompanionBuilder,
+          $$ProfileTableUpdateCompanionBuilder,
+          (
+            ProfileData,
+            BaseReferences<_$AppDatabase, $ProfileTable, ProfileData>,
+          ),
+          ProfileData,
+          PrefetchHooks Function()
+        > {
+  $$ProfileTableTableManager(_$AppDatabase db, $ProfileTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ProfileTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ProfileTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ProfileTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> displayName = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => ProfileCompanion(
+                id: id,
+                displayName: displayName,
+                updatedAt: updatedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String displayName,
+                required DateTime updatedAt,
+              }) => ProfileCompanion.insert(
+                id: id,
+                displayName: displayName,
+                updatedAt: updatedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ProfileTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ProfileTable,
+      ProfileData,
+      $$ProfileTableFilterComposer,
+      $$ProfileTableOrderingComposer,
+      $$ProfileTableAnnotationComposer,
+      $$ProfileTableCreateCompanionBuilder,
+      $$ProfileTableUpdateCompanionBuilder,
+      (ProfileData, BaseReferences<_$AppDatabase, $ProfileTable, ProfileData>),
+      ProfileData,
+      PrefetchHooks Function()
+    >;
 typedef $$SignalIdentityTableCreateCompanionBuilder =
     SignalIdentityCompanion Function({
       Value<int> id,
@@ -6325,6 +6890,8 @@ class $AppDatabaseManager {
       $$GroupOpsLogTableTableManager(_db, _db.groupOpsLog);
   $$PeerBundleStateTableTableManager get peerBundleState =>
       $$PeerBundleStateTableTableManager(_db, _db.peerBundleState);
+  $$ProfileTableTableManager get profile =>
+      $$ProfileTableTableManager(_db, _db.profile);
   $$SignalIdentityTableTableManager get signalIdentity =>
       $$SignalIdentityTableTableManager(_db, _db.signalIdentity);
   $$SignalPreKeysTableTableManager get signalPreKeys =>
