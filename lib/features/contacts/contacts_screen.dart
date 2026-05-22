@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../util/display_name.dart';
 import '../chat/chat_thread_screen.dart';
 import 'add_contact_screen.dart';
 import 'contacts_provider.dart';
@@ -33,12 +34,17 @@ class ContactsScreen extends ConsumerWidget {
             separatorBuilder: (context, index) => const Divider(height: 1),
             itemBuilder: (_, i) {
               final c = contacts[i];
+              final title = resolveName(c.pubkeyHex, c);
               return ListTile(
-                title: Text(
-                  '${c.pubkeyHex.substring(0, 8)}…${c.pubkeyHex.substring(56)}',
-                  style: const TextStyle(fontFamily: 'monospace'),
+                title: Text(title),
+                subtitle: Text(
+                  shortPubkey(c.pubkeyHex),
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    color: Colors.grey,
+                  ),
                 ),
-                subtitle: Text('added ${c.addedAt.toLocal()}'),
                 trailing: const Icon(Icons.chat_bubble_outline),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
