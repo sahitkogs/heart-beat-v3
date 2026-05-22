@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/contact.dart' as model;
+import '../../util/display_name.dart';
 import '../contacts/contacts_provider.dart';
 import 'chat_thread_screen.dart';
 import 'message_service_provider.dart';
@@ -112,14 +113,18 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
                   separatorBuilder: (_, i) => const Divider(height: 1),
                   itemBuilder: (_, i) {
                     final model.Contact c = contacts[i];
-                    final label =
-                        '${c.pubkeyHex.substring(0, 8)}…${c.pubkeyHex.substring(c.pubkeyHex.length - 8)}';
+                    final label = resolveName(c.pubkeyHex, c);
                     final checked = _selected.contains(c.pubkeyHex);
                     return CheckboxListTile(
                       value: checked,
-                      title: Text(
-                        label,
-                        style: const TextStyle(fontFamily: 'monospace'),
+                      title: Text(label),
+                      subtitle: Text(
+                        shortPubkey(c.pubkeyHex),
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                          color: Colors.grey,
+                        ),
                       ),
                       onChanged: (val) {
                         setState(() {
