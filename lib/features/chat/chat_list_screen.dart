@@ -11,6 +11,7 @@ import '../contacts/contacts_screen.dart';
 import '../identity/identity_screen.dart';
 import '../notifications/fcm_provider.dart';
 import 'chat_thread_screen.dart';
+import 'message_service_provider.dart';
 import 'select_contact_screen.dart';
 
 class ChatListScreen extends ConsumerStatefulWidget {
@@ -37,6 +38,17 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
         // ignore: avoid_print
         print('[ChatListScreen] fcm registration failed: $e');
       });
+      // T13.BUG.5 — pre-warm the MessageService so the relay WebSocket is
+      // connected while the user sits on home. Without this, every inbound
+      // message had to fall back to FCM wake (and the BG-isolate path
+      // doesn't propagate to drift watch() in the main isolate).
+      ref.read(messageServiceProvider.future).then(
+        (_) {},
+        onError: (Object e) {
+          // ignore: avoid_print
+          print('[ChatListScreen] message service init failed: $e');
+        },
+      );
     });
   }
 

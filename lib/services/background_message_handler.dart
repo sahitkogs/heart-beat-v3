@@ -452,7 +452,16 @@ Future<void> _handleGroupInvite({
       addedAt: inv.createdAt,
     );
   }
-  final body = '${_short(inv.creator)} created the group';
+  // Resolve the creator's name (displayName ?? claimedName ?? short hex) so
+  // the system row + chat-list preview match what the user expects to see.
+  // Mirrors MessageService._handleGroupInvite (message_service.dart:1043).
+  final repoForInvite = ContactsRepository(db);
+  final allInviteContacts = await repoForInvite.loadAll();
+  final creatorContact = allInviteContacts
+      .where((c) => c.pubkeyHex == inv.creator)
+      .firstOrNull;
+  final body =
+      '${resolveName(inv.creator, creatorContact)} created the group';
   final now = DateTime.now();
   await dao.insertMessage(MessagesCompanion.insert(
     id: _uuid.v4(),

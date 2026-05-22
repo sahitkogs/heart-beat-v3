@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'chat/chat_providers.dart';
 import 'features/chat/chat_list_screen.dart';
 import 'features/chat/chat_thread_screen.dart';
+import 'features/chat/chat_thread_provider.dart';
+import 'features/contacts/contacts_provider.dart';
 import 'features/profile/display_name_setup_screen.dart';
 import 'firebase_options.dart';
 import 'services/background_message_handler.dart';
@@ -93,9 +95,39 @@ class HeartbeatV3App extends ConsumerStatefulWidget {
   ConsumerState<HeartbeatV3App> createState() => _HeartbeatV3AppState();
 }
 
-class _HeartbeatV3AppState extends ConsumerState<HeartbeatV3App> {
+class _HeartbeatV3AppState extends ConsumerState<HeartbeatV3App>
+    with WidgetsBindingObserver {
   // Cold-launch routing is owned by StartupRouter (not duplicated here)
   // so the chat-thread push and the '/chats' replacement don't race.
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// T13.BUG.3 — when the app comes back to the foreground, invalidate the
+  /// drift-backed providers so a fresh query picks up rows written by the
+  /// FCM background isolate (whose AppDatabase instance is separate, so its
+  /// inserts don't notify our main-isolate stream watchers).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state != AppLifecycleState.resumed) return;
+    // StreamProviders re-subscribe to drift's watch() on invalidate, so the
+    // newly-emitted snapshot reflects current row state.
+    ref.invalidate(chatsStreamProvider);
+    ref.invalidate(chatThreadProvider);
+    ref.invalidate(chatProvider);
+    ref.invalidate(groupActiveMembersProvider);
+    ref.invalidate(contactsListProvider);
+  }
 
   @override
   Widget build(BuildContext context) {
