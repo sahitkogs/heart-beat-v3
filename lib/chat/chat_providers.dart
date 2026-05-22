@@ -5,6 +5,7 @@ import '../data/chats_dao.dart';
 import '../data/group_members_dao.dart';
 import '../data/group_ops_log_dao.dart';
 import '../data/peer_bundle_state_dao.dart';
+import '../data/profile_dao.dart';
 import '../features/contacts/contacts_provider.dart';
 
 final chatsDaoProvider = Provider<ChatsDao>(
@@ -22,6 +23,10 @@ final groupMembersDaoProvider = Provider<GroupMembersDao>((ref) {
 
 final groupOpsLogDaoProvider = Provider<GroupOpsLogDao>((ref) {
   return GroupOpsLogDao(ref.watch(appDatabaseProvider));
+});
+
+final profileDaoProvider = Provider<ProfileDao>((ref) {
+  return ProfileDao(ref.watch(appDatabaseProvider));
 });
 
 final chatsStreamProvider = StreamProvider<List<Chat>>(
