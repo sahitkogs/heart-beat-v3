@@ -3,12 +3,20 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../data/models/contact.dart';
+import '../../util/display_name.dart';
+import '../identity/identity_provider.dart';
 import 'contacts_provider.dart';
 import 'scan_handler.dart';
 
-enum _Mode { camera, paste }
+/// Stage machine for the add-contact flow:
+///   - chooseMethod: initial chooser (Scan QR vs Paste hex)
+///   - scanQr: camera scanner view
+///   - pasteHex: paste form with optional nickname
+///   - shareBack: post-save reciprocal pairing hint (your QR + hex)
+enum _Stage { chooseMethod, scanQr, pasteHex, shareBack }
 
 class AddContactScreen extends ConsumerStatefulWidget {
   const AddContactScreen({super.key});
@@ -18,54 +26,72 @@ class AddContactScreen extends ConsumerStatefulWidget {
 }
 
 class _AddContactScreenState extends ConsumerState<AddContactScreen> {
+  _Stage _stage = _Stage.chooseMethod;
   bool _handled = false;
   String? _statusMessage;
   String? _permissionError;
-  late final MobileScannerController _controller;
+  MobileScannerController? _controller;
 
-  _Mode _mode = _Mode.camera;
   final TextEditingController _pasteCtrl = TextEditingController();
   final TextEditingController _nicknameCtrl = TextEditingController();
   String? _pasteError;
   bool _saving = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _controller = MobileScannerController();
-    _controller.barcodes.listen((capture) {
-      _onDetect(capture);
-    });
-    // Listen to controller state changes to detect permission-denied errors.
-    // MobileScannerController.start() catches MobileScannerException internally
-    // and stores it in value.error rather than re-throwing, so we observe via
-    // the ValueNotifier listener instead of catchError.
-    _controller.addListener(_onControllerStateChanged);
-    _controller.start();
-  }
-
-  void _onControllerStateChanged() {
-    final error = _controller.value.error;
-    if (error != null && mounted) {
-      setState(() {
-        _permissionError = error.toString();
-        // Camera unavailable — drop into paste mode so the user can still pair.
-        _mode = _Mode.paste;
-      });
-    }
-  }
+  /// Label of the just-added contact (resolveName output). Shown on the
+  /// shareBack stage to personalize the prompt.
+  String? _savedContactLabel;
 
   @override
   void dispose() {
-    _controller.removeListener(_onControllerStateChanged);
-    _controller.dispose();
+    _controller?.removeListener(_onControllerStateChanged);
+    _controller?.dispose();
     _pasteCtrl.dispose();
     _nicknameCtrl.dispose();
     super.dispose();
   }
 
+  void _gotoStage(_Stage s) {
+    if (_stage == s) return;
+    setState(() {
+      _stage = s;
+      _statusMessage = null;
+      _pasteError = null;
+    });
+    if (s == _Stage.scanQr) {
+      _startScanner();
+    } else {
+      _stopScanner();
+    }
+  }
+
+  void _startScanner() {
+    if (_controller != null) return;
+    _controller = MobileScannerController();
+    _controller!.barcodes.listen((capture) => _onDetect(capture));
+    _controller!.addListener(_onControllerStateChanged);
+    _controller!.start();
+  }
+
+  void _stopScanner() {
+    final c = _controller;
+    if (c == null) return;
+    c.removeListener(_onControllerStateChanged);
+    c.dispose();
+    _controller = null;
+    _handled = false;
+  }
+
+  void _onControllerStateChanged() {
+    final error = _controller?.value.error;
+    if (error != null && mounted && _stage == _Stage.scanQr) {
+      setState(() {
+        _permissionError = error.toString();
+      });
+    }
+  }
+
   Future<void> _onDetect(BarcodeCapture capture) async {
-    if (_handled || _mode != _Mode.camera) return;
+    if (_handled || _stage != _Stage.scanQr) return;
     final raw = capture.barcodes
         .map((b) => b.rawValue)
         .whereType<String>()
@@ -81,46 +107,7 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
     }
 
     _handled = true;
-    await _saveAndPop(result.pubkeyHex!);
-  }
-
-  // Persist `pubkeyHex` and navigate back. Shared by the camera scan path
-  // and the paste-pubkey path; the validation upstream is the same
-  // (ScanHandler.parse) so both paths put the same 64-char lowercase hex in.
-  //
-  // Trust model note: a camera scan implies face-to-face confirmation that
-  // the pubkey belongs to the person nearby. A pasted pubkey derives its
-  // trust from the out-of-band channel used to share it (call, iMessage,
-  // email). If that channel is compromised, a swap is undetectable until a
-  // future fingerprint check. Acceptable for v3's two-party use; see
-  // [[v3-paste-pubkey-pairing]] memory before raising the bar.
-  Future<void> _saveAndPop(String pubkeyHex) async {
-    final repo = ref.read(contactsRepositoryProvider);
-    final nick = _nicknameCtrl.text.trim();
-    await repo.add(Contact(
-      pubkeyHex: pubkeyHex,
-      addedAt: DateTime.now(),
-      displayName: nick.isEmpty ? null : nick,
-    ));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Contact added')),
-    );
-    Navigator.of(context).pop();
-  }
-
-  void _switchMode(_Mode mode) {
-    if (_mode == mode) return;
-    setState(() {
-      _mode = mode;
-      _statusMessage = null;
-      _pasteError = null;
-    });
-    if (mode == _Mode.camera && _permissionError == null) {
-      _controller.start();
-    } else {
-      _controller.stop();
-    }
+    await _saveAndAdvance(result.pubkeyHex!, nickname: null);
   }
 
   Future<void> _pasteFromClipboard() async {
@@ -147,35 +134,118 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
       _saving = true;
       _pasteError = null;
     });
-    await _saveAndPop(result.pubkeyHex!);
+    await _saveAndAdvance(result.pubkeyHex!,
+        nickname: _nicknameCtrl.text.trim());
+  }
+
+  /// Persist the new contact and transition to the shareBack stage.
+  ///
+  /// Trust model note: a camera scan implies face-to-face confirmation that
+  /// the pubkey belongs to the person nearby. A pasted pubkey derives its
+  /// trust from the out-of-band channel used to share it (call, iMessage,
+  /// email). If that channel is compromised, a swap is undetectable until a
+  /// future fingerprint check. See [[v3-paste-pubkey-pairing]] memory.
+  Future<void> _saveAndAdvance(
+    String pubkeyHex, {
+    required String? nickname,
+  }) async {
+    final repo = ref.read(contactsRepositoryProvider);
+    final nick =
+        nickname != null && nickname.isNotEmpty ? nickname : null;
+    await repo.add(Contact(
+      pubkeyHex: pubkeyHex,
+      addedAt: DateTime.now(),
+      displayName: nick,
+    ));
+    if (!mounted) return;
+    // For the shareBack greeting we want to address the user by the label
+    // we just persisted — falls back to truncated hex if they didn't type
+    // a nickname.
+    final label = resolveName(
+        pubkeyHex,
+        Contact(
+          pubkeyHex: pubkeyHex,
+          addedAt: DateTime.now(),
+          displayName: nick,
+        ));
+    _stopScanner();
+    setState(() {
+      _savedContactLabel = label;
+      _stage = _Stage.shareBack;
+      _saving = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Add contact'),
-        actions: [
-          IconButton(
-            tooltip: _mode == _Mode.camera ? 'Paste pubkey' : 'Use camera',
-            icon: Icon(
-              _mode == _Mode.camera ? Icons.content_paste : Icons.qr_code_scanner,
-            ),
-            onPressed: () => _switchMode(
-              _mode == _Mode.camera ? _Mode.paste : _Mode.camera,
-            ),
-          ),
-        ],
+        title: Text(_appBarTitle()),
+        leading: _stage == _Stage.chooseMethod || _stage == _Stage.shareBack
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => _gotoStage(_Stage.chooseMethod),
+              ),
       ),
-      body: _mode == _Mode.paste ? _buildPasteBody() : _buildCameraBody(),
+      body: switch (_stage) {
+        _Stage.chooseMethod => _buildChooser(),
+        _Stage.scanQr => _buildCameraBody(),
+        _Stage.pasteHex => _buildPasteBody(),
+        _Stage.shareBack => _buildShareBack(),
+      },
+    );
+  }
+
+  String _appBarTitle() {
+    return switch (_stage) {
+      _Stage.chooseMethod => 'Add contact',
+      _Stage.scanQr => 'Scan QR code',
+      _Stage.pasteHex => 'Paste hex code',
+      _Stage.shareBack => 'Contact saved',
+    };
+  }
+
+  Widget _buildChooser() {
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(20, 8, 20, 16),
+          child: Text(
+            'How do you want to add your contact?',
+            style: TextStyle(fontSize: 16),
+          ),
+        ),
+        ListTile(
+          leading: CircleAvatar(
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            foregroundColor: Theme.of(context).colorScheme.onPrimary,
+            child: const Icon(Icons.qr_code_scanner),
+          ),
+          title: const Text('Scan QR code'),
+          subtitle: const Text(
+              "Use the camera to scan the other person's QR code."),
+          onTap: () => _gotoStage(_Stage.scanQr),
+        ),
+        const Divider(height: 1),
+        ListTile(
+          leading: CircleAvatar(
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            foregroundColor: Theme.of(context).colorScheme.onPrimary,
+            child: const Icon(Icons.content_paste),
+          ),
+          title: const Text('Paste hex code'),
+          subtitle: const Text(
+              'A 64-character hex string shared via message, email, etc.'),
+          onTap: () => _gotoStage(_Stage.pasteHex),
+        ),
+      ],
     );
   }
 
   Widget _buildCameraBody() {
     if (_permissionError != null) {
-      // Defensive: _onControllerStateChanged should have already flipped us
-      // into paste mode, but if the user manually toggled back, surface the
-      // permission state with a route into paste mode.
       return Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
@@ -200,17 +270,21 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
             ),
             const SizedBox(height: 12),
             TextButton.icon(
-              onPressed: () => _switchMode(_Mode.paste),
+              onPressed: () => _gotoStage(_Stage.pasteHex),
               icon: const Icon(Icons.content_paste),
-              label: const Text('Paste pubkey instead'),
+              label: const Text('Paste hex instead'),
             ),
           ],
         ),
       );
     }
+    final c = _controller;
+    if (c == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
     return Stack(
       children: [
-        MobileScanner(controller: _controller),
+        MobileScanner(controller: c),
         if (_statusMessage != null)
           Positioned(
             left: 16,
@@ -301,6 +375,82 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildShareBack() {
+    final identityAsync = ref.watch(identityProvider);
+    return identityAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Error: $e')),
+      data: (identity) {
+        final myHex = identity.publicKeyHex;
+        final contactLabel = _savedContactLabel ?? 'your contact';
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Icon(
+                Icons.check_circle,
+                size: 56,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Contact added',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Now share your own code with $contactLabel so they can add you back.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 24),
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: QrImageView(
+                    data: myHex,
+                    version: QrVersions.auto,
+                    size: 220,
+                    backgroundColor: Colors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              SelectableText(
+                myHex,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  await Clipboard.setData(ClipboardData(text: myHex));
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('Hex copied to clipboard')),
+                  );
+                },
+                icon: const Icon(Icons.copy),
+                label: const Text('Copy my hex'),
+              ),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Done'),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
