@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/app_database.dart';
 import '../../data/models/contact.dart' as model;
+import '../../util/display_name.dart';
 import '../contacts/contacts_provider.dart';
 import '../identity/identity_provider.dart';
 import 'chat_thread_provider.dart';
@@ -11,10 +12,6 @@ import 'message_service_provider.dart';
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
-
-String _short(String hex) => hex.length >= 16
-    ? '${hex.substring(0, 8)}…${hex.substring(hex.length - 8)}'
-    : hex;
 
 class _Badge extends StatelessWidget {
   const _Badge({required this.label});
@@ -106,7 +103,7 @@ class GroupSettingsScreen extends ConsumerWidget {
 // Header widget
 // ---------------------------------------------------------------------------
 
-class _GroupHeader extends StatelessWidget {
+class _GroupHeader extends ConsumerWidget {
   const _GroupHeader({
     required this.chat,
     required this.me,
@@ -118,12 +115,18 @@ class _GroupHeader extends StatelessWidget {
   final int? memberCount;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final groupName = chat.groupName ?? '(unnamed group)';
     final initial = groupName.isNotEmpty ? groupName[0].toUpperCase() : '?';
 
     final creator = chat.creatorPubkeyHex ?? '';
-    final creatorLabel = creator == me ? 'you' : _short(creator);
+    final contactsAsync = ref.watch(contactsListProvider);
+    final creatorContact = contactsAsync.maybeWhen(
+      data: (list) => list.where((c) => c.pubkeyHex == creator).firstOrNull,
+      orElse: () => null,
+    );
+    final creatorLabel =
+        creator == me ? 'you' : resolveName(creator, creatorContact);
     final countLabel =
         memberCount != null ? '$memberCount members' : '— members';
 
@@ -177,6 +180,11 @@ class _MemberList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final contactsAsync = ref.watch(contactsListProvider);
+    final contactsByPk = contactsAsync.maybeWhen(
+      data: (list) => {for (final c in list) c.pubkeyHex: c},
+      orElse: () => <String, model.Contact>{},
+    );
     return ListView.separated(
       itemCount: members.length + (isCreator ? 1 : 0),
       separatorBuilder: (_, sep) => const Divider(height: 1),
@@ -193,14 +201,13 @@ class _MemberList extends ConsumerWidget {
         final member = members[isCreator ? index - 1 : index];
         final memberIsCreator = member.memberPubkeyHex == chat.creatorPubkeyHex;
         final memberIsMe = member.memberPubkeyHex == me;
+        final memberLabel = resolveName(
+            member.memberPubkeyHex, contactsByPk[member.memberPubkeyHex]);
 
         return ListTile(
           title: Row(
             children: [
-              Text(
-                _short(member.memberPubkeyHex),
-                style: const TextStyle(fontFamily: 'monospace'),
-              ),
+              Text(memberLabel),
               if (memberIsCreator) const _Badge(label: 'admin'),
               if (memberIsMe) const _Badge(label: 'you'),
             ],
@@ -246,13 +253,18 @@ class _MemberList extends ConsumerWidget {
     WidgetRef ref,
     GroupMember member,
   ) async {
+    final contacts = await ref.read(contactsRepositoryProvider).loadAll();
+    final memberContact = contacts
+        .where((c) => c.pubkeyHex == member.memberPubkeyHex)
+        .firstOrNull;
+    final memberLabel = resolveName(member.memberPubkeyHex, memberContact);
+    if (!context.mounted) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Remove from group?'),
         content: Text(
-          'Remove ${_short(member.memberPubkeyHex)} from this group? '
-          'They will be notified.',
+          'Remove $memberLabel from this group? They will be notified.',
         ),
         actions: [
           TextButton(
@@ -420,11 +432,16 @@ class _AddMemberPickerState extends ConsumerState<_AddMemberPicker> {
             separatorBuilder: (_, sep) => const Divider(height: 1),
             itemBuilder: (_, i) {
               final contact = eligible[i];
-              final label = _short(contact.pubkeyHex);
+              final label = resolveName(contact.pubkeyHex, contact);
               return ListTile(
-                title: Text(
-                  label,
-                  style: const TextStyle(fontFamily: 'monospace'),
+                title: Text(label),
+                subtitle: Text(
+                  shortPubkey(contact.pubkeyHex),
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    color: Colors.grey,
+                  ),
                 ),
                 trailing: _adding
                     ? const SizedBox(
