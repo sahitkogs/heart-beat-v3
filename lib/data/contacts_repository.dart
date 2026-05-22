@@ -44,4 +44,22 @@ class ContactsRepository {
           ..where((t) => t.pubkeyHex.equals(pubkeyHex)))
         .write(ContactsCompanion(claimedName: Value(claimedName)));
   }
+
+  /// Overwrite the user-chosen local [displayName] for [pubkeyHex]. Drives
+  /// the rename-contact dialog on ContactsScreen. The new value beats any
+  /// claimedName per spec §3.2 resolution order.
+  Future<void> updateDisplayName(String pubkeyHex, String displayName) async {
+    await (_db.update(_db.contacts)
+          ..where((t) => t.pubkeyHex.equals(pubkeyHex)))
+        .write(ContactsCompanion(displayName: Value(displayName)));
+  }
+
+  /// Drop the contact row. Crypto state (libsignal sessions/identities) and
+  /// group membership rows are NOT touched here — orchestration of the chat
+  /// teardown and group-admin cascade lives in the UI delete flow.
+  Future<void> deleteContact(String pubkeyHex) async {
+    await (_db.delete(_db.contacts)
+          ..where((t) => t.pubkeyHex.equals(pubkeyHex)))
+        .go();
+  }
 }

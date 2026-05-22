@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/app_database.dart';
 import '../../data/models/contact.dart' as model;
 import '../../util/display_name.dart';
+import '../contacts/contact_actions.dart';
 import '../contacts/contacts_provider.dart';
 import '../identity/identity_provider.dart';
 import 'chat_thread_provider.dart';
@@ -51,7 +52,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       }
     });
 
-    // AppBar title: group name (tappable) or truncated pubkey (direct).
+    // AppBar title:
+    //   - group: tap → GroupSettingsScreen (unchanged)
+    //   - direct: tap → bottom sheet with rename/delete actions (T13.UX.8)
     Widget titleWidget;
     if (isGroup) {
       titleWidget = GestureDetector(
@@ -63,7 +66,19 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
         child: Text(chat!.groupName ?? '(unnamed group)'),
       );
     } else {
-      titleWidget = Text(resolveName(widget.chatId, contactsByPk[widget.chatId]));
+      final peerContact = contactsByPk[widget.chatId];
+      final peerName = resolveName(widget.chatId, peerContact);
+      titleWidget = InkWell(
+        onTap: () => _openDirectContactSheet(context, peerName, peerContact),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(child: Text(peerName, overflow: TextOverflow.ellipsis)),
+            const SizedBox(width: 4),
+            const Icon(Icons.expand_more, size: 20),
+          ],
+        ),
+      );
     }
 
     return Scaffold(
@@ -117,6 +132,103 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
           _buildComposer(context, messageSvcAsync, chat, hasLeft, isGroup),
         ],
       ),
+    );
+  }
+
+  /// Bottom sheet for the direct-chat header. Shows the peer name + full
+  /// pubkey hex, and offers Rename / Delete via the shared contact_actions
+  /// helpers. Skips Rename/Delete entirely if there's no Contacts row (e.g.,
+  /// after a prior soft-delete the chat may linger without a contact).
+  ///
+  /// On hard delete the chat is gone, so we pop the screen.
+  Future<void> _openDirectContactSheet(
+    BuildContext context,
+    String peerName,
+    model.Contact? peerContact,
+  ) async {
+    final navigator = Navigator.of(context);
+    final pubkeyHex = widget.chatId;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      peerName,
+                      style: Theme.of(sheetCtx).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      pubkeyHex,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (peerContact != null) ...[
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.edit_outlined),
+                  title: const Text('Rename'),
+                  onTap: () async {
+                    Navigator.of(sheetCtx).pop();
+                    await openRenameContactDialog(
+                      context,
+                      ref,
+                      peerContact,
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    Icons.delete_outline,
+                    color: Theme.of(sheetCtx).colorScheme.error,
+                  ),
+                  title: Text(
+                    'Delete contact',
+                    style: TextStyle(
+                      color: Theme.of(sheetCtx).colorScheme.error,
+                    ),
+                  ),
+                  onTap: () async {
+                    Navigator.of(sheetCtx).pop();
+                    final result = await openDeleteContactDialog(
+                      context,
+                      ref,
+                      peerContact,
+                    );
+                    // Hard delete removed the chat — leave the thread.
+                    if (result == true && navigator.canPop()) {
+                      navigator.pop();
+                    }
+                  },
+                ),
+              ] else
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 8, 20, 16),
+                  child: Text(
+                    'Not in your contacts — re-add them to rename or delete.',
+                    style: TextStyle(fontStyle: FontStyle.italic),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 

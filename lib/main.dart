@@ -94,17 +94,8 @@ class HeartbeatV3App extends ConsumerStatefulWidget {
 }
 
 class _HeartbeatV3AppState extends ConsumerState<HeartbeatV3App> {
-  @override
-  void initState() {
-    super.initState();
-    final chatId = widget.coldLaunchChatId;
-    if (chatId != null) {
-      // Wait for the first frame so MaterialApp + Navigator have built.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _openChatThread(chatId);
-      });
-    }
-  }
+  // Cold-launch routing is owned by StartupRouter (not duplicated here)
+  // so the chat-thread push and the '/chats' replacement don't race.
 
   @override
   Widget build(BuildContext context) {
@@ -118,16 +109,27 @@ class _HeartbeatV3AppState extends ConsumerState<HeartbeatV3App> {
       routes: {
         '/chats': (_) => const ChatListScreen(),
       },
-      home: const StartupRouter(),
+      home: StartupRouter(coldLaunchChatId: widget.coldLaunchChatId),
     );
   }
 }
 
-/// Reads profile.displayName once on first frame and lands the user on
-/// DisplayNameSetupScreen (if null) or ChatListScreen (if set). Uses
-/// pushReplacement so back-navigation doesn't return to this router.
+/// Reads profile.displayName once on first frame and routes the user:
+///   - profile null            → DisplayNameSetupScreen
+///   - profile set, no chatId  → '/chats'
+///   - profile set, cold chatId → '/chats' THEN push ChatThreadScreen on top
+///     (so back goes Chats → exit, matching the warm-tap behavior of
+///     NotificationsService.onTap)
+///
+/// Owning all cold-launch routing here avoids the previous race between this
+/// screen's pushReplacementNamed and a duplicate push in HeartbeatV3App.
 class StartupRouter extends ConsumerStatefulWidget {
-  const StartupRouter({super.key});
+  const StartupRouter({super.key, this.coldLaunchChatId});
+
+  /// Chat id (direct = peer pubkey hex, group = group hex id) carried in by
+  /// a tapped notification that woke the process from a killed state. Null
+  /// on a regular launch.
+  final String? coldLaunchChatId;
 
   @override
   ConsumerState<StartupRouter> createState() => _StartupRouterState();
@@ -145,8 +147,16 @@ class _StartupRouterState extends ConsumerState<StartupRouter> {
         Navigator.of(context).pushReplacement(MaterialPageRoute(
           builder: (_) => const DisplayNameSetupScreen(),
         ));
-      } else {
-        Navigator.of(context).pushReplacementNamed('/chats');
+        return;
+      }
+      final chatId = widget.coldLaunchChatId;
+      Navigator.of(context).pushReplacementNamed('/chats');
+      if (chatId != null) {
+        // pushReplacementNamed above completes synchronously enough that
+        // the new ChatListScreen is on the stack before we push the thread.
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => ChatThreadScreen(chatId: chatId),
+        ));
       }
     });
   }

@@ -4,6 +4,8 @@ import 'package:drift/drift.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart'
+    show DuplicateMessageException;
 import 'package:uuid/uuid.dart';
 
 import '../chat/group_envelope.dart';
@@ -136,8 +138,36 @@ Future<void> processFcmMessage(
         peerPubkeyHex: senderPubkeyHex,
         ciphertext: parsed.ciphertext!,
       );
+    } on DuplicateMessageException catch (e) {
+      // Re-delivery of a message we already processed (WebSocket path while
+      // the app was alive, an earlier FCM dispatch, or an FCM retry). The
+      // first delivery already either persisted it or showed a banner; a
+      // duplicate banner here would be noise.
+      _log('decrypt_skip_duplicate from=${_short(senderPubkeyHex)} err=$e');
+      return;
     } catch (e, st) {
       _log('decrypt FAILED from=${_short(senderPubkeyHex)} err=$e\n$st');
+      // T13.BUG.2 — silent drop hid every real decrypt failure. Show a
+      // generic banner so the user at least knows something arrived;
+      // payload points to the direct chat with the sender so a tap opens
+      // somewhere useful (drift refresh on reconnect can fill in details).
+      if (showNotification) {
+        try {
+          final repo = ContactsRepository(db);
+          final contacts = await repo.loadAll();
+          final senderContact = contacts
+              .where((c) => c.pubkeyHex == senderPubkeyHex)
+              .firstOrNull;
+          final title = resolveName(senderPubkeyHex, senderContact);
+          await _showMessageNotification(
+            title: title,
+            body: 'New message — open Heart.Beat to view',
+            payload: senderPubkeyHex,
+          );
+        } catch (e2, st2) {
+          _log('decrypt_fail_notify_failed err=$e2\n$st2');
+        }
+      }
       return;
     }
 

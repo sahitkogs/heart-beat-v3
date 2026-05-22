@@ -16,6 +16,7 @@ import '../util/display_name.dart';
 import '../relay/relay_client.dart';
 import '../relay/relay_frames.dart';
 import '../services/crypto_service.dart';
+import '../services/notifications_service.dart';
 import '../services/signing_service.dart';
 import '../services/wake_client.dart';
 import 'group_envelope.dart';
@@ -904,6 +905,26 @@ class MessageService {
         ? '$senderLabel: ${_preview(body)}'
         : _preview(body);
     await dao.updateLastMessage(inner.chatId, previewText, now);
+
+    // Phase 10.4.1 T13.UX.9 — when the WebSocket inbound path lands while
+    // the app is backgrounded (process alive but not foregrounded), the FCM
+    // banner path won't fire (relay forwarded over WS instead of waking us),
+    // so post a notification here. No-ops when foregrounded.
+    try {
+      final notifyTitle = chat.kind == 'group'
+          ? (chat.groupName ?? 'Group')
+          : senderLabel;
+      final notifyBody = chat.kind == 'group'
+          ? '$senderLabel: ${_preview(body)}'
+          : _preview(body);
+      await NotificationsService.instance.showMessageNotificationIfBackgrounded(
+        title: notifyTitle,
+        body: notifyBody,
+        payload: inner.chatId,
+      );
+    } catch (e, st) {
+      _log('inbound_notify_failed err=$e\n$st');
+    }
   }
 
   /// T6.1 — handle inbound `group_invite` envelope on the foreground path.

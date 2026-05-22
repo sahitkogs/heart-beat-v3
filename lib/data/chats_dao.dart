@@ -102,4 +102,18 @@ class ChatsDao extends DatabaseAccessor<AppDatabase> with _$ChatsDaoMixin {
   Stream<Chat?> watchChat(String chatId) =>
       (select(chats)..where((t) => t.chatId.equals(chatId)))
           .watchSingleOrNull();
+
+  /// Atomically drop a direct chat: messages, lamport seq, and the chat row.
+  /// Guarded to `kind == 'direct'` so a caller passing a group chatId by
+  /// mistake can't accidentally nuke a group row (group teardown is its own
+  /// path — the protocol uses MemberRemove / Leave instead).
+  Future<void> deleteDirectChat(String chatId) {
+    return transaction(() async {
+      await (delete(messages)..where((m) => m.chatId.equals(chatId))).go();
+      await (delete(lamportSeq)..where((l) => l.chatId.equals(chatId))).go();
+      await (delete(chats)
+            ..where((c) => c.chatId.equals(chatId) & c.kind.equals('direct')))
+          .go();
+    });
+  }
 }

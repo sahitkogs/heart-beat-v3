@@ -4,7 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../util/display_name.dart';
 import '../chat/chat_thread_screen.dart';
 import 'add_contact_screen.dart';
+import 'contact_actions.dart';
 import 'contacts_provider.dart';
+
+enum _ContactMenuAction { rename, delete }
 
 class ContactsScreen extends ConsumerWidget {
   const ContactsScreen({super.key});
@@ -45,7 +48,44 @@ class ContactsScreen extends ConsumerWidget {
                     color: Colors.grey,
                   ),
                 ),
-                trailing: const Icon(Icons.chat_bubble_outline),
+                trailing: PopupMenuButton<_ContactMenuAction>(
+                  icon: const Icon(Icons.more_vert),
+                  tooltip: 'Contact options',
+                  onSelected: (action) async {
+                    switch (action) {
+                      case _ContactMenuAction.rename:
+                        await openRenameContactDialog(context, ref, c);
+                        break;
+                      case _ContactMenuAction.delete:
+                        await openDeleteContactDialog(context, ref, c);
+                        break;
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: _ContactMenuAction.rename,
+                      child: ListTile(
+                        leading: Icon(Icons.edit_outlined),
+                        title: Text('Rename'),
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: _ContactMenuAction.delete,
+                      child: ListTile(
+                        leading: Icon(
+                          Icons.delete_outline,
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                        title: Text(
+                          'Delete contact',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) =>

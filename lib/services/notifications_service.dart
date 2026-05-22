@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -78,6 +79,43 @@ class NotificationsService {
     final payload = resp.payload;
     if (payload == null) return;
     _onTap?.call(payload);
+  }
+
+  /// Post a chat-message banner from the main isolate, but only if the app
+  /// is NOT currently in the foreground. When the user is actively using the
+  /// app the in-UI streams already reflect the message, so a banner would be
+  /// noisy.
+  ///
+  /// Mirrors the channel + payload conventions used by the FCM background
+  /// handler so taps land on the same routing path
+  /// (NotificationsService.onTap → push ChatThreadScreen).
+  Future<void> showMessageNotificationIfBackgrounded({
+    required String title,
+    required String body,
+    required String payload,
+  }) async {
+    final state = WidgetsBinding.instance.lifecycleState;
+    if (state == AppLifecycleState.resumed) return;
+    if (!_initialized) await init();
+
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        messagesChannelId,
+        _messagesChannelName,
+        channelDescription: _messagesChannelDescription,
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+    );
+
+    final id = DateTime.now().millisecondsSinceEpoch & 0x7fffffff;
+    await plugin.show(
+      id: id,
+      title: title,
+      body: body,
+      notificationDetails: details,
+      payload: payload,
+    );
   }
 
   Future<bool> requestPermission() async {

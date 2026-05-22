@@ -14,9 +14,10 @@ import 'scan_handler.dart';
 /// Stage machine for the add-contact flow:
 ///   - chooseMethod: initial chooser (Scan QR vs Paste hex)
 ///   - scanQr: camera scanner view
-///   - pasteHex: paste form with optional nickname
+///   - nameContact: post-scan name prompt (required nickname, pubkey read-only)
+///   - pasteHex: paste form (required nickname + hex)
 ///   - shareBack: post-save reciprocal pairing hint (your QR + hex)
-enum _Stage { chooseMethod, scanQr, pasteHex, shareBack }
+enum _Stage { chooseMethod, scanQr, nameContact, pasteHex, shareBack }
 
 class AddContactScreen extends ConsumerStatefulWidget {
   const AddContactScreen({super.key});
@@ -36,6 +37,10 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
   final TextEditingController _nicknameCtrl = TextEditingController();
   String? _pasteError;
   bool _saving = false;
+
+  /// Pubkey captured from the camera scan, surfaced read-only on the
+  /// nameContact stage so the user can name the contact before save.
+  String? _scannedHex;
 
   /// Label of the just-added contact (resolveName output). Shown on the
   /// shareBack stage to personalize the prompt.
@@ -107,7 +112,23 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
     }
 
     _handled = true;
-    await _saveAndAdvance(result.pubkeyHex!, nickname: null);
+    _stopScanner();
+    if (!mounted) return;
+    setState(() {
+      _scannedHex = result.pubkeyHex!;
+      _nicknameCtrl.clear();
+      _stage = _Stage.nameContact;
+      _statusMessage = null;
+    });
+  }
+
+  Future<void> _saveScannedKey() async {
+    if (_saving) return;
+    final hex = _scannedHex;
+    final nick = _nicknameCtrl.text.trim();
+    if (hex == null || nick.isEmpty) return;
+    setState(() => _saving = true);
+    await _saveAndAdvance(hex, nickname: nick);
   }
 
   Future<void> _pasteFromClipboard() async {
@@ -125,6 +146,8 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
 
   Future<void> _savePastedKey() async {
     if (_saving) return;
+    final nick = _nicknameCtrl.text.trim();
+    if (nick.isEmpty) return;
     final result = ScanHandler.parse(_pasteCtrl.text);
     if (!result.isValid) {
       setState(() => _pasteError = result.error);
@@ -134,8 +157,7 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
       _saving = true;
       _pasteError = null;
     });
-    await _saveAndAdvance(result.pubkeyHex!,
-        nickname: _nicknameCtrl.text.trim());
+    await _saveAndAdvance(result.pubkeyHex!, nickname: nick);
   }
 
   /// Persist the new contact and transition to the shareBack stage.
@@ -191,6 +213,7 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
       body: switch (_stage) {
         _Stage.chooseMethod => _buildChooser(),
         _Stage.scanQr => _buildCameraBody(),
+        _Stage.nameContact => _buildNameContact(),
         _Stage.pasteHex => _buildPasteBody(),
         _Stage.shareBack => _buildShareBack(),
       },
@@ -201,6 +224,7 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
     return switch (_stage) {
       _Stage.chooseMethod => 'Add contact',
       _Stage.scanQr => 'Scan QR code',
+      _Stage.nameContact => 'Name this contact',
       _Stage.pasteHex => 'Paste hex code',
       _Stage.shareBack => 'Contact saved',
     };
@@ -328,10 +352,12 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
             controller: _nicknameCtrl,
             maxLength: 40,
             decoration: const InputDecoration(
-              labelText: 'Nickname (optional)',
+              labelText: 'Nickname',
               hintText: 'What to call this person',
+              helperText: 'Required',
               border: OutlineInputBorder(),
             ),
+            onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -364,7 +390,81 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
           ),
           const SizedBox(height: 12),
           FilledButton(
-            onPressed: _saving ? null : _savePastedKey,
+            onPressed: (_saving || _nicknameCtrl.text.trim().isEmpty)
+                ? null
+                : _savePastedKey,
+            child: _saving
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Save contact'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNameContact() {
+    final hex = _scannedHex ?? '';
+    final canSave = !_saving && _nicknameCtrl.text.trim().isNotEmpty;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Give this contact a name',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Used everywhere in the app. You can rename later from Contacts.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 20),
+          TextField(
+            controller: _nicknameCtrl,
+            maxLength: 40,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Nickname',
+              hintText: 'What to call this person',
+              helperText: 'Required',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (_) => setState(() {}),
+            onSubmitted: (_) => canSave ? _saveScannedKey() : null,
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Scanned pubkey',
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
+                const SizedBox(height: 4),
+                SelectableText(
+                  hex,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: canSave ? _saveScannedKey : null,
             child: _saving
                 ? const SizedBox(
                     height: 18,
