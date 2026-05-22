@@ -3,8 +3,10 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'chat/chat_providers.dart';
+import 'features/chat/chat_list_screen.dart';
 import 'features/chat/chat_thread_screen.dart';
-import 'features/home/home_screen.dart';
+import 'features/profile/display_name_setup_screen.dart';
 import 'firebase_options.dart';
 import 'services/background_message_handler.dart';
 import 'services/notifications_service.dart';
@@ -109,7 +111,46 @@ class _HeartbeatV3AppState extends State<HeartbeatV3App> {
       title: 'Heartbeat v3',
       theme: buildAppTheme(),
       navigatorKey: rootNavigatorKey,
-      home: const HomeScreen(),
+      routes: {
+        '/chats': (_) => const ChatListScreen(),
+      },
+      home: const StartupRouter(),
+    );
+  }
+}
+
+/// Reads profile.displayName once on first frame and lands the user on
+/// DisplayNameSetupScreen (if null) or ChatListScreen (if set). Uses
+/// pushReplacement so back-navigation doesn't return to this router.
+class StartupRouter extends ConsumerStatefulWidget {
+  const StartupRouter({super.key});
+
+  @override
+  ConsumerState<StartupRouter> createState() => _StartupRouterState();
+}
+
+class _StartupRouterState extends ConsumerState<StartupRouter> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final dao = ref.read(profileDaoProvider);
+      final row = await dao.get();
+      if (!mounted) return;
+      if (row == null) {
+        Navigator.of(context).pushReplacement(MaterialPageRoute(
+          builder: (_) => const DisplayNameSetupScreen(),
+        ));
+      } else {
+        Navigator.of(context).pushReplacementNamed('/chats');
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(child: CircularProgressIndicator()),
     );
   }
 }

@@ -3,14 +3,37 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../chat/chat_providers.dart';
 import '../../data/app_database.dart';
+import '../../services/notifications_service.dart';
+import '../notifications/fcm_provider.dart';
 import 'chat_thread_screen.dart';
 import 'new_group_screen.dart';
 
-class ChatListScreen extends ConsumerWidget {
+class ChatListScreen extends ConsumerStatefulWidget {
   const ChatListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ChatListScreen> createState() => _ChatListScreenState();
+}
+
+class _ChatListScreenState extends ConsumerState<ChatListScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Lifecycle wiring moved here from the retired HomeScreen (T3.3):
+    // trigger the POST_NOTIFICATIONS permission prompt after the first
+    // frame so the OS dialog overlays a rendered UI, and kick off FCM
+    // registration once identity exists.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      NotificationsService.instance.requestPermission();
+      ref.read(fcmRegistrationProvider.future).catchError((Object e) {
+        // ignore: avoid_print
+        print('[ChatListScreen] fcm registration failed: $e');
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final chatsAsync = ref.watch(chatsStreamProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Chats')),
