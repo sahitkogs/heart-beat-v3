@@ -785,6 +785,13 @@ class MessageService {
       return;
     }
 
+    // T6.1 — persist claimedName for the session-sender if they're already
+    // a contact. Per spec §3.3, names from non-contacts are dropped.
+    await _maybeUpdateClaimedName(
+      senderPubkeyHex: frame.fromPubkeyHex,
+      senderDisplayName: inner.senderDisplayName,
+    );
+
     if (inner is GroupInviteEnvelope) {
       await _handleGroupInvite(frame, inner);
       return;
@@ -1386,6 +1393,27 @@ class MessageService {
   Future<String?> _currentDisplayName() async {
     final row = await profileDao.get();
     return row?.displayName;
+  }
+
+  /// Persists the sender's claimedName to contacts when an inbound envelope
+  /// carries one. Spec §3.3: names from non-contacts are silently dropped.
+  /// Whitespace-only is treated as missing. Names over 100 chars are
+  /// truncated. Never touches `displayName` (user-chosen winning value).
+  Future<void> _maybeUpdateClaimedName({
+    required String senderPubkeyHex,
+    required String? senderDisplayName,
+  }) async {
+    if (senderDisplayName == null) return;
+    final trimmed = senderDisplayName.trim();
+    if (trimmed.isEmpty) return;
+    final capped = trimmed.length > 100 ? trimmed.substring(0, 100) : trimmed;
+    final contacts = await contactsRepository.loadAll();
+    final exists = contacts.any((c) => c.pubkeyHex == senderPubkeyHex);
+    if (!exists) {
+      _log('claimed_name_unknown_sender from=${_short(senderPubkeyHex)}');
+      return;
+    }
+    await contactsRepository.updateClaimedName(senderPubkeyHex, capped);
   }
 
   String _preview(String body) =>

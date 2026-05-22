@@ -16,6 +16,7 @@ import '../data/group_members_dao.dart';
 import '../data/group_ops_log_dao.dart';
 import '../data/peer_bundle_state_dao.dart';
 import '../firebase_options.dart';
+import '../util/display_name.dart';
 import 'key_storage.dart';
 import 'libsignal_crypto_service.dart';
 import 'notifications_service.dart';
@@ -148,6 +149,14 @@ Future<void> processFcmMessage(
       return;
     }
 
+    // T6.2 — persist claimedName for the session-sender if they're already
+    // a contact. Mirrors MessageService._maybeUpdateClaimedName per spec §3.3.
+    await _maybeUpdateClaimedName(
+      db: db,
+      senderPubkeyHex: senderPubkeyHex,
+      senderDisplayName: inner.senderDisplayName,
+    );
+
     // Self-bootstrap our own pubkey for verification gates (self-in-members,
     // target==self self-leave, etc.). Background isolate can run before any
     // UI mounts so we instantiate our own SigningService.
@@ -264,8 +273,18 @@ Future<void> processFcmMessage(
     );
     // Group-tile preview must include the sender prefix (mirrors foreground
     // _handleDeliver TextEnvelope branch in message_service.dart).
+    // Load the sender's contact row once for both the preview and the
+    // notification. claimedName may have been updated above by
+    // _maybeUpdateClaimedName, so reload after that point.
+    final repo = ContactsRepository(db);
+    final allContacts = await repo.loadAll();
+    final senderContact = allContacts
+        .where((c) => c.pubkeyHex == senderPubkeyHex)
+        .firstOrNull;
+    final senderLabel = resolveName(senderPubkeyHex, senderContact);
+
     final preview = chat.kind == 'group'
-        ? '${_short(senderPubkeyHex)}: ${_preview(body)}'
+        ? '$senderLabel: ${_preview(body)}'
         : _preview(body);
     await dao.updateLastMessage(inner.chatId, preview, now);
     _log('persisted message from=${_short(senderPubkeyHex)} '
@@ -275,15 +294,15 @@ Future<void> processFcmMessage(
       String title;
       String notifyBody;
       if (chat.kind == 'group') {
-        title = chat.groupName ?? _short(inner.chatId);
-        notifyBody = '${_short(senderPubkeyHex)}: $body';
+        title = chat.groupName ?? shortPubkey(inner.chatId);
+        notifyBody = '$senderLabel: $body';
       } else {
-        final repo = ContactsRepository(db);
-        final contacts = await repo.loadAll();
-        final isKnown = contacts.any((c) => c.pubkeyHex == senderPubkeyHex);
-        title = isKnown
-            ? _short(senderPubkeyHex)
-            : 'Unknown ${_short(senderPubkeyHex)}';
+        // Direct chat — title is resolved name (or "Unknown <short>" if the
+        // sender isn't in contacts; this can happen on the very first
+        // inbound from a peer that hasn't been QR/paste-paired yet, e.g.
+        // during pre-key bundle exchange initiated by the peer).
+        final isKnown = senderContact != null;
+        title = isKnown ? senderLabel : 'Unknown $senderLabel';
         notifyBody = body;
       }
       try {
@@ -433,9 +452,15 @@ Future<void> _handleGroupInvite({
   // deep-link finds the chat row.
   if (showNotification) {
     try {
+      final repo = ContactsRepository(db);
+      final allContacts = await repo.loadAll();
+      final creatorContact = allContacts
+          .where((c) => c.pubkeyHex == inv.creator)
+          .firstOrNull;
+      final creatorLabel = resolveName(inv.creator, creatorContact);
       await _showMessageNotification(
         title: 'New group: ${inv.groupName}',
-        body: '${_short(inv.creator)} added you',
+        body: '$creatorLabel added you',
         payload: inv.chatId,
       );
     } catch (e, st) {
@@ -802,6 +827,30 @@ String _short(String hex) =>
     hex.length >= 16
         ? '${hex.substring(0, 6)}…${hex.substring(hex.length - 6)}'
         : hex;
+
+/// Mirrors MessageService._maybeUpdateClaimedName per spec §3.3. Persists
+/// the sender's claimedName to contacts when an inbound envelope carries
+/// one, but only if the contact already exists. Whitespace-only is treated
+/// as missing. Names over 100 chars are truncated. Never touches
+/// `displayName` (user-chosen winning value).
+Future<void> _maybeUpdateClaimedName({
+  required AppDatabase db,
+  required String senderPubkeyHex,
+  required String? senderDisplayName,
+}) async {
+  if (senderDisplayName == null) return;
+  final trimmed = senderDisplayName.trim();
+  if (trimmed.isEmpty) return;
+  final capped = trimmed.length > 100 ? trimmed.substring(0, 100) : trimmed;
+  final repo = ContactsRepository(db);
+  final contacts = await repo.loadAll();
+  final exists = contacts.any((c) => c.pubkeyHex == senderPubkeyHex);
+  if (!exists) {
+    _log('claimed_name_unknown_sender from=${_short(senderPubkeyHex)}');
+    return;
+  }
+  await repo.updateClaimedName(senderPubkeyHex, capped);
+}
 
 void _log(String msg) {
   // ignore: avoid_print

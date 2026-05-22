@@ -697,6 +697,84 @@ void main() {
     });
   });
 
+  group('inbound claimedName update (T6.1)', () {
+    test('updates contacts.claimedName when contact exists', () async {
+      // Seed: alice has peerPub as a contact.
+      await contactsRepo.add(contact_model.Contact(
+        pubkeyHex: peerPub,
+        addedAt: DateTime.utc(2026, 5, 22),
+      ));
+      // Peer sends a text with senderDisplayName='Bobby'.
+      final innerBytes = InnerEnvelope.buildText(
+        chatId: peerPub, lamport: 1, body: 'hi',
+        senderDisplayName: 'Bobby',
+      );
+      relay.emit(DeliverFrame(
+        fromPubkeyHex: peerPub,
+        envelope: EnvelopeWire.wrapMessage([0xCC, ...innerBytes]),
+      ));
+      await drainMicrotasks();
+
+      final contacts = await contactsRepo.loadAll();
+      final c = contacts.firstWhere((c) => c.pubkeyHex == peerPub);
+      expect(c.claimedName, 'Bobby');
+      expect(c.displayName, isNull); // never auto-populates displayName
+    });
+
+    test('drops claimedName when contact does not exist', () async {
+      // No contact row for peerPub.
+      final innerBytes = InnerEnvelope.buildText(
+        chatId: peerPub, lamport: 1, body: 'hi',
+        senderDisplayName: 'Bobby',
+      );
+      relay.emit(DeliverFrame(
+        fromPubkeyHex: peerPub,
+        envelope: EnvelopeWire.wrapMessage([0xCC, ...innerBytes]),
+      ));
+      await drainMicrotasks();
+
+      final contacts = await contactsRepo.loadAll();
+      // No contact for peerPub was added (the test confirms that we don't
+      // create one as a side effect of the inbound).
+      expect(contacts.where((c) => c.pubkeyHex == peerPub), isEmpty);
+    });
+
+    test('whitespace-only senderDisplayName does not overwrite', () async {
+      await contactsRepo.add(contact_model.Contact(
+        pubkeyHex: peerPub,
+        addedAt: DateTime.utc(2026, 5, 22),
+      ));
+      // First inbound sets claimedName='old'.
+      final firstInner = InnerEnvelope.buildText(
+        chatId: peerPub, lamport: 1, body: 'first',
+        senderDisplayName: 'old',
+      );
+      relay.emit(DeliverFrame(
+        fromPubkeyHex: peerPub,
+        envelope: EnvelopeWire.wrapMessage([0xCC, ...firstInner]),
+      ));
+      await drainMicrotasks();
+      expect((await contactsRepo.loadAll())
+              .firstWhere((c) => c.pubkeyHex == peerPub).claimedName,
+          'old');
+
+      // Second inbound with whitespace-only name should NOT overwrite.
+      final secondInner = InnerEnvelope.buildText(
+        chatId: peerPub, lamport: 2, body: 'second',
+        senderDisplayName: '   ',
+      );
+      relay.emit(DeliverFrame(
+        fromPubkeyHex: peerPub,
+        envelope: EnvelopeWire.wrapMessage([0xCC, ...secondInner]),
+      ));
+      await drainMicrotasks();
+      expect((await contactsRepo.loadAll())
+              .firstWhere((c) => c.pubkeyHex == peerPub).claimedName,
+          'old',
+          reason: 'whitespace senderDisplayName must not overwrite claimedName');
+    });
+  });
+
   group('senderDisplayName in outbound envelopes (T5.2)', () {
     Future<void> bootstrap() async {
       relay.emit(DeliverFrame(
