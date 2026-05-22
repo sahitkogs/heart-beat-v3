@@ -310,16 +310,22 @@ class MessageService {
       addedByPubkeyHex: myPubkeyHex, addedAt: now,
     );
     final lamport = await dao.bumpLamport(chatId);
+    final addedContactList = await contactsRepository.loadAll();
+    final addedContact = addedContactList
+        .where((c) => c.pubkeyHex == newMemberPubkeyHex)
+        .firstOrNull;
+    final addedLabel = resolveName(newMemberPubkeyHex, addedContact);
+    final addBodyText = 'You added $addedLabel';
     await dao.insertMessage(MessagesCompanion.insert(
       id: _uuid.v4(),
       chatId: chatId,
       senderPubkeyHex: myPubkeyHex,
-      body: 'You added ${_short(newMemberPubkeyHex)}',
+      body: addBodyText,
       lamport: lamport,
       sentAt: now,
       kind: const Value('member_add'),
     ));
-    await dao.updateLastMessage(chatId, 'You added ${_short(newMemberPubkeyHex)}', now);
+    await dao.updateLastMessage(chatId, addBodyText, now);
 
     // Build + sign member_add (for existing members)
     final addBody = <String, dynamic>{
@@ -443,17 +449,22 @@ class MessageService {
       removedAt: now,
     );
     final lamport = await dao.bumpLamport(chatId);
+    final rmContactList = await contactsRepository.loadAll();
+    final rmContact = rmContactList
+        .where((c) => c.pubkeyHex == targetPubkeyHex)
+        .firstOrNull;
+    final rmLabel = resolveName(targetPubkeyHex, rmContact);
+    final rmBodyText = 'You removed $rmLabel';
     await dao.insertMessage(MessagesCompanion.insert(
       id: _uuid.v4(),
       chatId: chatId,
       senderPubkeyHex: myPubkeyHex,
-      body: 'You removed ${_short(targetPubkeyHex)}',
+      body: rmBodyText,
       lamport: lamport,
       sentAt: now,
       kind: const Value('member_remove'),
     ));
-    await dao.updateLastMessage(
-        chatId, 'You removed ${_short(targetPubkeyHex)}', now);
+    await dao.updateLastMessage(chatId, rmBodyText, now);
 
     // Build + sign member_remove
     final removeBody = <String, dynamic>{
@@ -1003,7 +1014,13 @@ class MessageService {
         addedAt: inv.createdAt,
       );
     }
-    final body = '${_short(inv.creator)} created the group';
+    // T11.1: use resolveName (the claimedName we just persisted from
+    // _maybeUpdateClaimedName above is the freshest signal we have).
+    final creatorContact = allContacts
+        .where((c) => c.pubkeyHex == inv.creator)
+        .firstOrNull;
+    final body =
+        '${resolveName(inv.creator, creatorContact)} created the group';
     final now = DateTime.now();
     await dao.insertMessage(MessagesCompanion.insert(
       id: _uuid.v4(),
@@ -1122,9 +1139,20 @@ class MessageService {
     );
     await dao.bumpLastOpSeq(inv.chatId, inv.opSeq);
 
+    // T11.1: system row uses resolveName for creator + target.
+    final memberAddContacts = await contactsRepository.loadAll();
+    final addCreatorContact = memberAddContacts
+        .where((c) => c.pubkeyHex == chat.creatorPubkeyHex!)
+        .firstOrNull;
+    final addTargetContact = memberAddContacts
+        .where((c) => c.pubkeyHex == inv.target)
+        .firstOrNull;
+    final addCreatorLabel =
+        resolveName(chat.creatorPubkeyHex!, addCreatorContact);
+    final addTargetLabel = resolveName(inv.target, addTargetContact);
     final body = inv.target == myPubkeyHex
-        ? '${_short(chat.creatorPubkeyHex!)} added you'
-        : '${_short(chat.creatorPubkeyHex!)} added ${_short(inv.target)}';
+        ? '$addCreatorLabel added you'
+        : '$addCreatorLabel added $addTargetLabel';
     final now = DateTime.now();
     // Observe inv.lamport so subsequent text messages in this group don't
     // accidentally get a smaller lamport than the system row.
@@ -1257,9 +1285,20 @@ class MessageService {
     }
     await dao.bumpLastOpSeq(inv.chatId, inv.opSeq);
 
+    // T11.1: system row uses resolveName for creator + target.
+    final memberRmContacts = await contactsRepository.loadAll();
+    final rmCreatorContact = memberRmContacts
+        .where((c) => c.pubkeyHex == chat.creatorPubkeyHex!)
+        .firstOrNull;
+    final rmTargetContact = memberRmContacts
+        .where((c) => c.pubkeyHex == inv.target)
+        .firstOrNull;
+    final rmCreatorLabel =
+        resolveName(chat.creatorPubkeyHex!, rmCreatorContact);
+    final rmTargetLabel = resolveName(inv.target, rmTargetContact);
     final body = inv.target == myPubkeyHex
-        ? '${_short(chat.creatorPubkeyHex!)} removed you'
-        : '${_short(chat.creatorPubkeyHex!)} removed ${_short(inv.target)}';
+        ? '$rmCreatorLabel removed you'
+        : '$rmCreatorLabel removed $rmTargetLabel';
     final lamport = await dao.observeLamport(inv.chatId, inv.lamport);
     await dao.insertMessage(MessagesCompanion.insert(
       id: _uuid.v4(),
@@ -1365,7 +1404,13 @@ class MessageService {
       removedAt: inv.leftAt,
     );
 
-    final body = '${_short(frame.fromPubkeyHex)} left';
+    // T11.1: system row uses resolveName for the leaver.
+    final leaveContacts = await contactsRepository.loadAll();
+    final leaverContact = leaveContacts
+        .where((c) => c.pubkeyHex == frame.fromPubkeyHex)
+        .firstOrNull;
+    final leaverLabel = resolveName(frame.fromPubkeyHex, leaverContact);
+    final body = '$leaverLabel left';
     final lamport = await dao.observeLamport(inv.chatId, inv.lamport);
     await dao.insertMessage(MessagesCompanion.insert(
       id: _uuid.v4(),
