@@ -1,0 +1,128 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../util/display_name.dart';
+import '../contacts/add_contact_screen.dart';
+import '../contacts/contacts_provider.dart';
+import 'chat_thread_screen.dart';
+import 'new_group_screen.dart';
+
+/// Full-screen route opened by the Chats FAB. WhatsApp-pattern composer:
+/// "New group" + "New contact" action rows at the top, followed by the
+/// existing contact list. Tap a contact to start a direct chat.
+class SelectContactScreen extends ConsumerWidget {
+  const SelectContactScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final contactsAsync = ref.watch(contactsListProvider);
+    return Scaffold(
+      appBar: AppBar(
+        title: contactsAsync.maybeWhen(
+          data: (contacts) => Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Select contact'),
+              Text(
+                '${contacts.length} contact${contacts.length == 1 ? '' : 's'}',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+          orElse: () => const Text('Select contact'),
+        ),
+      ),
+      body: contactsAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Error: $e')),
+        data: (contacts) {
+          final sorted = [...contacts]..sort((a, b) =>
+              resolveName(a.pubkeyHex, a).toLowerCase().compareTo(
+                  resolveName(b.pubkeyHex, b).toLowerCase()));
+          return ListView(
+            children: [
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                  child: const Icon(Icons.group_add),
+                ),
+                title: const Text('New group'),
+                onTap: () async {
+                  await Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const NewGroupScreen(),
+                  ));
+                  // After returning from group creation, close the
+                  // composer so the user lands back on the Chats list.
+                  if (context.mounted) Navigator.of(context).pop();
+                },
+              ),
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                  child: const Icon(Icons.person_add),
+                ),
+                title: const Text('New contact'),
+                trailing: const Icon(Icons.qr_code_scanner),
+                onTap: () async {
+                  await Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const AddContactScreen(),
+                  ));
+                  ref.invalidate(contactsListProvider);
+                },
+              ),
+              const Divider(height: 1),
+              if (sorted.isNotEmpty)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Text(
+                    'CONTACTS ON HEARTBEAT',
+                    style: TextStyle(
+                      fontSize: 11,
+                      letterSpacing: 0.05,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ),
+              ...sorted.map((c) {
+                final name = resolveName(c.pubkeyHex, c);
+                final initial = name.isNotEmpty
+                    ? name.substring(0, 1).toUpperCase()
+                    : '?';
+                return ListTile(
+                  leading: CircleAvatar(child: Text(initial)),
+                  title: Text(name),
+                  subtitle: Text(
+                    shortPubkey(c.pubkeyHex),
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 11,
+                      color: Colors.grey,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.of(context).pushReplacement(MaterialPageRoute(
+                      builder: (_) => ChatThreadScreen(chatId: c.pubkeyHex),
+                    ));
+                  },
+                );
+              }),
+              if (sorted.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(
+                    child: Text(
+                      'No contacts yet. Tap "New contact" to add one.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}

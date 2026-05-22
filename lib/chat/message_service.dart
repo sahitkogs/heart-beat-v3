@@ -12,6 +12,7 @@ import '../data/group_members_dao.dart';
 import '../data/group_ops_log_dao.dart';
 import '../data/peer_bundle_state_dao.dart';
 import '../data/profile_dao.dart';
+import '../util/display_name.dart';
 import '../relay/relay_client.dart';
 import '../relay/relay_frames.dart';
 import '../services/crypto_service.dart';
@@ -878,12 +879,18 @@ class MessageService {
       receivedAt: Value(now),
       kind: const Value('text'),
     ));
-    // Group-tile preview must include the sender prefix so receivers can tell
-    // who's talking. T7.1 punted on this; T8.1 fixes it here (foreground) and
-    // mirrors the same write in the background isolate. Outgoing self-sent
-    // group text writes raw preview (handled in sendGroupText).
+    // Group-tile preview includes the sender prefix so receivers can tell
+    // who's talking. Phase 10.4.1 T7.4: use resolveName so the prefix is the
+    // human-readable name (displayName ?? claimedName) when available, falling
+    // back to truncated hex. Outgoing self-sent group text writes raw preview
+    // (handled in sendGroupText).
+    final senderContacts = await contactsRepository.loadAll();
+    final senderContact = senderContacts
+        .where((c) => c.pubkeyHex == frame.fromPubkeyHex)
+        .firstOrNull;
+    final senderLabel = resolveName(frame.fromPubkeyHex, senderContact);
     final previewText = chat.kind == 'group'
-        ? '${_short(frame.fromPubkeyHex)}: ${_preview(body)}'
+        ? '$senderLabel: ${_preview(body)}'
         : _preview(body);
     await dao.updateLastMessage(inner.chatId, previewText, now);
   }
