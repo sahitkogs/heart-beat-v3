@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/widgets/app_header.dart';
+import '../../core/widgets/wordmark.dart';
 import '../../util/display_name.dart';
 import '../chat/chat_thread_screen.dart';
 import 'add_contact_screen.dart';
@@ -16,7 +18,15 @@ class ContactsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final contactsAsync = ref.watch(contactsListProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Contacts')),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(64),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: const AppHeader(),
+          ),
+        ),
+      ),
       body: contactsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
@@ -39,13 +49,14 @@ class ContactsScreen extends ConsumerWidget {
               final c = contacts[i];
               final title = resolveName(c.pubkeyHex, c);
               return ListTile(
+                leading: InitialAvatar(label: title),
                 title: Text(title),
                 subtitle: Text(
                   shortPubkey(c.pubkeyHex),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: 'monospace',
                     fontSize: 11,
-                    color: Colors.grey,
+                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                 ),
                 trailing: PopupMenuButton<_ContactMenuAction>(
