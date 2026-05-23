@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/widgets/wordmark.dart';
 import '../../data/app_database.dart';
 import '../../data/models/contact.dart' as model;
 import '../../util/display_name.dart';
@@ -117,7 +118,6 @@ class _GroupHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final groupName = chat.groupName ?? '(unnamed group)';
-    final initial = groupName.isNotEmpty ? groupName[0].toUpperCase() : '?';
 
     final creator = chat.creatorPubkeyHex ?? '';
     final contactsAsync = ref.watch(contactsListProvider);
@@ -129,15 +129,13 @@ class _GroupHeader extends ConsumerWidget {
         creator == me ? 'you' : resolveName(creator, creatorContact);
     final countLabel =
         memberCount != null ? '$memberCount members' : '— members';
+    final muted = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
       child: Column(
         children: [
-          CircleAvatar(
-            radius: 40,
-            child: Text(initial, style: const TextStyle(fontSize: 32)),
-          ),
+          InitialAvatar(label: groupName, size: 80),
           const SizedBox(height: 12),
           Text(
             groupName,
@@ -145,11 +143,11 @@ class _GroupHeader extends ConsumerWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 4),
-          Text(countLabel, style: const TextStyle(color: Colors.grey)),
+          Text(countLabel, style: TextStyle(color: muted)),
           const SizedBox(height: 4),
           Text(
             'Created by $creatorLabel',
-            style: const TextStyle(color: Colors.grey, fontSize: 13),
+            style: TextStyle(color: muted, fontSize: 13),
           ),
         ],
       ),
@@ -205,6 +203,7 @@ class _MemberList extends ConsumerWidget {
             member.memberPubkeyHex, contactsByPk[member.memberPubkeyHex]);
 
         return ListTile(
+          leading: InitialAvatar(label: memberLabel),
           title: Row(
             children: [
               Text(memberLabel),
@@ -273,7 +272,9 @@ class _MemberList extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
             child: const Text('Remove'),
           ),
         ],
@@ -313,7 +314,9 @@ class _LeaveGroupButton extends ConsumerWidget {
         child: SizedBox(
           width: double.infinity,
           child: OutlinedButton(
-            style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
             onPressed: () => _confirmLeave(context, ref),
             child: const Text('Leave group'),
           ),
@@ -337,7 +340,9 @@ class _LeaveGroupButton extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
             child: const Text('Leave'),
           ),
         ],
@@ -434,13 +439,14 @@ class _AddMemberPickerState extends ConsumerState<_AddMemberPicker> {
               final contact = eligible[i];
               final label = resolveName(contact.pubkeyHex, contact);
               return ListTile(
+                leading: InitialAvatar(label: label),
                 title: Text(label),
                 subtitle: Text(
                   shortPubkey(contact.pubkeyHex),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: 'monospace',
                     fontSize: 11,
-                    color: Colors.grey,
+                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
                   ),
                 ),
                 trailing: _adding
