@@ -49,7 +49,6 @@ class _ComposerState extends State<Composer> {
                 controller: _controller,
                 decoration: const InputDecoration(
                   hintText: 'Message…',
-                  border: OutlineInputBorder(),
                   contentPadding:
                       EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
@@ -66,6 +65,7 @@ class _ComposerState extends State<Composer> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.send),
+              color: Theme.of(context).colorScheme.primary,
               onPressed: _sending ? null : _submit,
             ),
           ],
