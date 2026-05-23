@@ -42,46 +42,59 @@ class _DisplayNameSetupScreenState
     return PopScope(
       canPop: false,
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Set your name'),
-          automaticallyImplyLeading: false,
-        ),
-        body: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 40),
-                const Center(child: Wordmark(size: 48)),
-                const SizedBox(height: 48),
-                const Text(
-                  'Pick a name people will see. You can change it later.',
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Center(child: Wordmark(size: 48)),
+                    const SizedBox(height: 32),
+                    const Text(
+                      'Pick a name people will see. You can change it later.',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    TextFormField(
+                      controller: _controller,
+                      autofocus: true,
+                      maxLength: 40,
+                      inputFormatters: [LengthLimitingTextInputFormatter(40)],
+                      decoration: InputDecoration(
+                        labelText: 'Display name',
+                        border: const OutlineInputBorder(),
+                        counterText: '',
+                        suffixIcon: _saving
+                            ? const Padding(
+                                padding: EdgeInsets.all(14),
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              )
+                            : IconButton(
+                                icon: const Icon(Icons.arrow_forward),
+                                color:
+                                    Theme.of(context).colorScheme.primary,
+                                tooltip: 'Continue',
+                                onPressed: _save,
+                              ),
+                      ),
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'Please enter a name'
+                          : null,
+                      onFieldSubmitted: (_) => _save(),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 24),
-                TextFormField(
-                  controller: _controller,
-                  autofocus: true,
-                  maxLength: 40,
-                  inputFormatters: [LengthLimitingTextInputFormatter(40)],
-                  decoration: const InputDecoration(
-                    labelText: 'Display name',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Please enter a name' : null,
-                  onFieldSubmitted: (_) => _save(),
-                ),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: _saving ? null : _save,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Text('Continue'),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
