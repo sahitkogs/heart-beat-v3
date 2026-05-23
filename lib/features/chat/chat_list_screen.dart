@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../chat/chat_providers.dart';
+import '../../core/widgets/wordmark.dart';
 import '../../data/app_database.dart';
 import '../../data/models/contact.dart' as model;
 import '../../services/notifications_service.dart';
@@ -88,7 +89,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('heart•beat'),
+          title: const Wordmark(size: 22),
           centerTitle: false,
           actions: [
             IconButton(
@@ -222,24 +223,24 @@ class _ChatTile extends ConsumerWidget {
 
   Widget _buildGroupTile(BuildContext context, WidgetRef ref) {
     final name = chat.groupName ?? '(unnamed group)';
-    final initial = name.substring(0, 1).toUpperCase();
     final preview = chat.lastMessagePreview ?? 'No messages yet';
     final timestamp = chat.lastMessageAt != null
         ? _formatTimestamp(chat.lastMessageAt!)
         : '';
     final isLeft = chat.leftAt != null;
+    final dimmed = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
 
     return ListTile(
-      leading: CircleAvatar(child: Text(initial)),
+      leading: InitialAvatar(label: name),
       title: Text(
         name,
-        style: isLeft ? const TextStyle(color: Colors.grey) : null,
+        style: isLeft ? TextStyle(color: dimmed) : null,
       ),
       subtitle: Text(
         preview,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: isLeft ? const TextStyle(color: Colors.grey) : null,
+        style: isLeft ? TextStyle(color: dimmed) : null,
       ),
       trailing: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -248,9 +249,9 @@ class _ChatTile extends ConsumerWidget {
           Text(timestamp, style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 2),
           if (isLeft)
-            const Text(
+            Text(
               'Left',
-              style: TextStyle(fontSize: 11, color: Colors.grey),
+              style: TextStyle(fontSize: 11, color: dimmed),
             )
           else
             FutureBuilder<int>(
@@ -260,7 +261,7 @@ class _ChatTile extends ConsumerWidget {
                   .then((l) => l.length),
               builder: (_, snap) => Text(
                 '${snap.data ?? 0}',
-                style: const TextStyle(fontSize: 11, color: Colors.grey),
+                style: TextStyle(fontSize: 11, color: dimmed),
               ),
             ),
         ],
@@ -281,9 +282,8 @@ class _ChatTile extends ConsumerWidget {
     final trailing = chat.lastMessageAt != null
         ? _formatTimestamp(chat.lastMessageAt!)
         : '';
-    final initial = title.isNotEmpty ? title.substring(0, 1).toUpperCase() : '?';
     return ListTile(
-      leading: CircleAvatar(child: Text(initial)),
+      leading: InitialAvatar(label: title),
       title: Text(title),
       subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
       trailing: Text(trailing, style: Theme.of(context).textTheme.bodySmall),
