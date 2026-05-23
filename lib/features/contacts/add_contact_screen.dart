@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../data/models/contact.dart';
+import '../../theme/app_colors.dart';
 import '../../util/display_name.dart';
 import '../identity/identity_provider.dart';
 import 'contacts_provider.dart';
@@ -315,14 +316,16 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
             right: 16,
             bottom: 32,
             child: Material(
-              color: Colors.red.shade100,
+              color: Theme.of(context).colorScheme.errorContainer,
               elevation: 2,
               borderRadius: BorderRadius.circular(8),
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Text(
                   _statusMessage!,
-                  style: const TextStyle(color: Colors.black),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
                 ),
               ),
             ),
@@ -513,21 +516,25 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.paper,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: QrImageView(
                     data: myHex,
                     version: QrVersions.auto,
                     size: 220,
-                    backgroundColor: Colors.white,
+                    backgroundColor: AppColors.paper,
                   ),
                 ),
               ),
               const SizedBox(height: 16),
               SelectableText(
                 myHex,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
