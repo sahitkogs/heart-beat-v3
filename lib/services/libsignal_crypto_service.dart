@@ -166,6 +166,11 @@ class LibsignalCryptoService implements CryptoService {
     return cipher.decryptFromSignal(msg);
   }
 
+  @override
+  Future<void> forgetPeer(String peerPubkeyHex) async {
+    await _store.deleteAllSessions(peerPubkeyHex);
+  }
+
   String _hex(List<int> bytes) =>
       bytes.map((b) => (b & 0xff).toRadixString(16).padLeft(2, '0')).join();
 

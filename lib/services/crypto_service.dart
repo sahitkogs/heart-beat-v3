@@ -33,4 +33,10 @@ abstract class CryptoService {
     required String peerPubkeyHex,
     required List<int> ciphertext,
   });
+
+  /// Drop all crypto state for a peer (Signal sessions, ratchet keys, cached
+  /// identities) so a subsequent [processPeerPreKeyBundle] establishes a fresh
+  /// X3DH session. Used when the user deletes a contact or the peer rotates
+  /// their identity (e.g. by reinstalling).
+  Future<void> forgetPeer(String peerPubkeyHex);
 }

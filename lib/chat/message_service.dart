@@ -1503,4 +1503,17 @@ class MessageService {
   Future<void> dispose() async {
     await _sub.cancel();
   }
+
+  /// Drop all crypto + bundle-exchange state for [peerPubkeyHex] so a future
+  /// re-pairing (delete + re-add, or peer rotating identity by reinstalling)
+  /// starts a fresh X3DH handshake. Without this, `_maybeSendOwnBundle`'s
+  /// `bundleSentAt != null` early-return + a stale `peerBundleReceivedAt`
+  /// combine to silently route sends into an unrecoverable session.
+  Future<void> forgetPeer(String peerPubkeyHex) async {
+    _pendingByPeer.remove(peerPubkeyHex);
+    _unackedByPeer.remove(peerPubkeyHex);
+    await peerBundleDao.deleteByPubkey(peerPubkeyHex);
+    await crypto.forgetPeer(peerPubkeyHex);
+    _log('forgetPeer cleared bundle+session for ${_short(peerPubkeyHex)}');
+  }
 }

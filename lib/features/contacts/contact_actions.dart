@@ -206,6 +206,15 @@ Future<bool?> openDeleteContactDialog(
     }
   }
 
+  try {
+    final svc = await ref.read(messageServiceProvider.future);
+    await svc.forgetPeer(contact.pubkeyHex);
+  } catch (e) {
+    // Best-effort: even if crypto cleanup fails (DB closed, peer never had a
+    // session yet, etc.) we still drop the contact row so the UI reflects
+    // the user's intent. A future re-pair will overwrite any stale state.
+    debugPrint('forgetPeer failed for ${contact.pubkeyHex}: $e');
+  }
   await ref.read(contactsRepositoryProvider).deleteContact(contact.pubkeyHex);
   ref.invalidate(contactsListProvider);
   messenger.showSnackBar(SnackBar(

@@ -39,4 +39,15 @@ class PeerBundleStateDao extends DatabaseAccessor<AppDatabase>
           ..where((t) => t.peerPubkeyHex.equals(peerPubkeyHex)))
         .write(const PeerBundleStateCompanion(bundleSentAt: Value(null)));
   }
+
+  /// Drop the entire bundle-exchange state row for a peer. Called when the
+  /// contact is deleted so a future re-pairing (e.g. paste-hex after a delete,
+  /// or after the peer rotated their identity by reinstalling) starts a clean
+  /// X3DH handshake instead of inheriting `bundleSentAt`/`peerBundleReceivedAt`
+  /// from the prior pairing.
+  Future<void> deleteByPubkey(String peerPubkeyHex) async {
+    await (delete(peerBundleState)
+          ..where((t) => t.peerPubkeyHex.equals(peerPubkeyHex)))
+        .go();
+  }
 }
