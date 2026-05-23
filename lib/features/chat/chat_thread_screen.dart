@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/widgets/wordmark.dart';
 import '../../data/app_database.dart';
 import '../../data/models/contact.dart' as model;
 import '../../util/display_name.dart';
@@ -56,7 +57,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     //   - group: tap → GroupSettingsScreen (unchanged)
     //   - direct: tap → bottom sheet with rename/delete actions (T13.UX.8)
     Widget titleWidget;
+    final String avatarLabel;
     if (isGroup) {
+      avatarLabel = chat?.groupName ?? '?';
       titleWidget = GestureDetector(
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(
@@ -68,6 +71,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     } else {
       final peerContact = contactsByPk[widget.chatId];
       final peerName = resolveName(widget.chatId, peerContact);
+      avatarLabel = peerName;
       titleWidget = InkWell(
         onTap: () => _openDirectContactSheet(context, peerName, peerContact),
         child: Row(
@@ -82,7 +86,15 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: titleWidget),
+      appBar: AppBar(
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: Center(child: InitialAvatar(label: avatarLabel, size: 32)),
+        ),
+        leadingWidth: 48,
+        title: titleWidget,
+        centerTitle: false,
+      ),
       body: Column(
         children: [
           Expanded(
@@ -170,10 +182,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                     const SizedBox(height: 4),
                     SelectableText(
                       pubkeyHex,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'monospace',
                         fontSize: 11,
-                        color: Colors.grey,
+                        color: Theme.of(sheetCtx).colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                   ],
@@ -254,16 +266,18 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     return null; // same sender consecutively — suppress repeat label
   }
 
-  Widget _systemRow(String body) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 32),
-        child: Center(
-          child: Text(
-            body,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontStyle: FontStyle.italic,
-              color: Colors.grey,
-              fontSize: 13,
+  Widget _systemRow(String body) => Builder(
+        builder: (ctx) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 32),
+          child: Center(
+            child: Text(
+              body,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontStyle: FontStyle.italic,
+                color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: 0.5),
+                fontSize: 13,
+              ),
             ),
           ),
         ),
@@ -296,13 +310,16 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
 
     // If the user has left this group, show a locked banner instead of composer.
     if (hasLeft) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
         child: Center(
           child: Text(
             "You're no longer in this group",
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+              fontStyle: FontStyle.italic,
+            ),
           ),
         ),
       );

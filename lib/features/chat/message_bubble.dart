@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../theme/app_colors.dart';
+
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
     super.key,
@@ -19,7 +21,14 @@ class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bubbleBg = fromMe
+        ? AppColors.accent
+        : (isDark ? AppColors.surfaceDark : AppColors.paperShade);
+    final bubbleFg = fromMe
+        ? AppColors.paper
+        : (isDark ? AppColors.inkOnDark : AppColors.ink);
+    final mutedFg = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
     return Align(
       alignment: fromMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Padding(
@@ -33,19 +42,18 @@ class MessageBubble extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 2, left: 2),
                 child: Text(
                   senderLabel!,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11,
-                    color: Colors.grey,
-                    fontFamily: 'monospace',
+                    color: mutedFg,
+                    fontFamily: 'serif',
+                    fontStyle: FontStyle.italic,
                   ),
                 ),
               ),
             Container(
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
               decoration: BoxDecoration(
-                color: fromMe
-                    ? colorScheme.primary
-                    : colorScheme.surfaceContainerHighest,
+                color: bubbleBg,
                 borderRadius: BorderRadius.circular(12),
               ),
               constraints: BoxConstraints(
@@ -58,8 +66,8 @@ class MessageBubble extends StatelessWidget {
                   Text(
                     body,
                     style: TextStyle(
-                      color:
-                          fromMe ? colorScheme.onPrimary : colorScheme.onSurface,
+                      fontFamily: 'serif',
+                      color: bubbleFg,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -67,10 +75,7 @@ class MessageBubble extends StatelessWidget {
                     _hhmm(timestamp.toLocal()),
                     style: TextStyle(
                       fontSize: 10,
-                      color: (fromMe
-                              ? colorScheme.onPrimary
-                              : colorScheme.onSurfaceVariant)
-                          .withValues(alpha: 0.7),
+                      color: bubbleFg.withValues(alpha: 0.7),
                     ),
                   ),
                 ],
