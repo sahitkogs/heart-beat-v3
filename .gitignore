@@ -58,3 +58,6 @@ key.properties
 
 # Local Play release tooling (downloaded, not source)
 /android/bundletool-*.jar
+
+# Play Console service-account key — credential, never commit
+/android/play-publisher-key.json

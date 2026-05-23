@@ -123,11 +123,27 @@ def main() -> None:
     bg = Image.new("RGBA", (SIZE, SIZE), PAPER + (255,))
     bg.save(OUT_DIR / "heartbeat-icon-bg.png", optimize=True)
 
-    # 3) Adaptive-icon foreground — transparent canvas, just the mark, with
-    #    a 25% safe-zone padding (Android crops the outer ring).
-    fg = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
-    draw_mark(fg)
-    fg.save(OUT_DIR / "heartbeat-icon-fg.png", optimize=True)
+    # 3) Adaptive-icon foreground — mark scaled into the 66% adaptive-icon
+    #    safe zone, then composited centered on a full-size transparent canvas.
+    #    The launcher's circular/squircle mask only reveals the inner ~66% of
+    #    the 108dp foreground; sizing the mark to ~55% of canvas keeps it
+    #    comfortably inside that visible area with a small margin.
+    SAFE_ZONE_FRAC = 0.55
+    mark_full = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    draw_mark(mark_full)
+    mark_bbox = mark_full.getbbox()
+    if mark_bbox is None:
+        mark_full.save(OUT_DIR / "heartbeat-icon-fg.png", optimize=True)
+    else:
+        cropped = mark_full.crop(mark_bbox)
+        cw, ch = cropped.size
+        target = int(SIZE * SAFE_ZONE_FRAC)
+        scale = min(target / cw, target / ch)
+        new_w, new_h = max(1, int(cw * scale)), max(1, int(ch * scale))
+        scaled = cropped.resize((new_w, new_h), Image.LANCZOS)
+        fg = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+        fg.paste(scaled, ((SIZE - new_w) // 2, (SIZE - new_h) // 2), scaled)
+        fg.save(OUT_DIR / "heartbeat-icon-fg.png", optimize=True)
 
     print(f"Wrote icons to {OUT_DIR}")
 
