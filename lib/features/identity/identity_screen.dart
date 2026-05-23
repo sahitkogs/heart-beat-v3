@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../chat/chat_providers.dart';
+import '../../theme/app_colors.dart';
 import '../../theme/theme_mode_provider.dart';
 import 'identity_provider.dart';
 
@@ -104,13 +105,17 @@ class _IdentityBodyState extends ConsumerState<_IdentityBody> {
                 data: widget.pubkeyHex,
                 version: QrVersions.auto,
                 size: 260,
-                backgroundColor: Colors.white,
+                backgroundColor: AppColors.paper,
               ),
             ),
             const SizedBox(height: 24),
             SelectableText(
               widget.pubkeyHex,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
