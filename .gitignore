@@ -50,3 +50,8 @@ app.*.map.json
 *.aab
 *.keystore
 *.jks
+
+# Release signing — never commit
+android/upload-keystore.jks
+android/key.properties
+key.properties
