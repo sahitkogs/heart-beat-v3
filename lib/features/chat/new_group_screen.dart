@@ -86,7 +86,6 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
               decoration: const InputDecoration(
                 labelText: 'Group name',
                 hintText: 'Enter a name for this group',
-                border: OutlineInputBorder(),
               ),
               textInputAction: TextInputAction.done,
             ),
@@ -120,10 +119,10 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
                       title: Text(label),
                       subtitle: Text(
                         shortPubkey(c.pubkeyHex),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontFamily: 'monospace',
                           fontSize: 11,
-                          color: Colors.grey,
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
                         ),
                       ),
                       onChanged: (val) {
@@ -146,7 +145,7 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
               padding: const EdgeInsets.all(16),
               child: SizedBox(
                 width: double.infinity,
-                child: ElevatedButton(
+                child: FilledButton(
                   onPressed: _canCreate ? _onCreate : null,
                   child: _creating
                       ? const SizedBox(
