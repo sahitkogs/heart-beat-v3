@@ -41,11 +41,16 @@ final wakeClientProvider = Provider<WakeClient>((ref) {
 });
 
 final messageServiceProvider = FutureProvider<MessageService>((ref) async {
+  // Identity must be loaded (and the Ed25519 seed written to secure storage)
+  // BEFORE relayClientProvider runs — RelayClient.connect() signs the WS
+  // handshake via signingServiceProvider, which reads from KeyStorage. On a
+  // brand-new applicationId (no prior secure-storage state) this ordering is
+  // the difference between a working connect and "no private key in storage".
+  final identity = await ref.watch(identityProvider.future);
   final crypto = await ref.watch(cryptoServiceProvider.future);
   final relay = await ref.watch(relayClientProvider.future);
   final dao = ref.watch(chatsDaoProvider);
   final peerBundleDao = ref.watch(peerBundleStateDaoProvider);
-  final identity = await ref.watch(identityProvider.future);
   final wake = ref.watch(wakeClientProvider);
   final groupMembersDao = ref.watch(groupMembersDaoProvider);
   final groupOpsLogDao = ref.watch(groupOpsLogDaoProvider);
