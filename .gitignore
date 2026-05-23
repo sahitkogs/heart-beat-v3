@@ -55,3 +55,6 @@ app.*.map.json
 android/upload-keystore.jks
 android/key.properties
 key.properties
+
+# Local Play release tooling (downloaded, not source)
+/android/bundletool-*.jar
