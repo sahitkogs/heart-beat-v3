@@ -1,4 +1,4 @@
-package com.heartbeat.app_v3
+package com.sahitkogs.heartbeat
 
 import io.flutter.embedding.android.FlutterActivity
 

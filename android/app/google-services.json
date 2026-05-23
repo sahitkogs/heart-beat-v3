@@ -70,6 +70,35 @@
           ]
         }
       }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:575626844367:android:5a86daf63d15391e9e7fba",
+        "android_client_info": {
+          "package_name": "com.sahitkogs.heartbeat"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "575626844367-vm95a8k7mcp5i6muul19fdkh424f3to3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCQuZ7xQ0mi84-vaxDPHDQ24ZLvl73vUd0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "575626844367-vm95a8k7mcp5i6muul19fdkh424f3to3.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
     }
   ],
   "configuration_version": "1"
