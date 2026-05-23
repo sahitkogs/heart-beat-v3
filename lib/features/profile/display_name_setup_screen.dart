@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../chat/chat_providers.dart';
+import '../../core/widgets/wordmark.dart';
 
 /// Blocking modal pushed by StartupRouter when profile.displayName is
 /// missing. Spec §4.1 — user cannot dismiss or go back; must enter a
@@ -52,6 +53,9 @@ class _DisplayNameSetupScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                const SizedBox(height: 40),
+                const Center(child: Wordmark(size: 48)),
+                const SizedBox(height: 48),
                 const Text(
                   'Pick a name people will see. You can change it later.',
                 ),
