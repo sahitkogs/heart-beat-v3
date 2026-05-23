@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/widgets/wordmark.dart';
 import '../../util/display_name.dart';
 import '../contacts/add_contact_screen.dart';
 import '../contacts/contacts_provider.dart';
@@ -26,7 +27,10 @@ class SelectContactScreen extends ConsumerWidget {
               const Text('Select contact'),
               Text(
                 '${contacts.length} contact${contacts.length == 1 ? '' : 's'}',
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                ),
               ),
             ],
           ),
@@ -75,31 +79,28 @@ class SelectContactScreen extends ConsumerWidget {
               ),
               const Divider(height: 1),
               if (sorted.isNotEmpty)
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                   child: Text(
                     'CONTACTS ON HEARTBEAT',
                     style: TextStyle(
                       fontSize: 11,
                       letterSpacing: 0.05,
-                      color: Colors.grey,
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
                     ),
                   ),
                 ),
               ...sorted.map((c) {
                 final name = resolveName(c.pubkeyHex, c);
-                final initial = name.isNotEmpty
-                    ? name.substring(0, 1).toUpperCase()
-                    : '?';
                 return ListTile(
-                  leading: CircleAvatar(child: Text(initial)),
+                  leading: InitialAvatar(label: name),
                   title: Text(name),
                   subtitle: Text(
                     shortPubkey(c.pubkeyHex),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 11,
-                      color: Colors.grey,
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
                     ),
                   ),
                   onTap: () {
