@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../data/app_database.dart';
 import '../../theme/app_colors.dart';
 
 class MessageBubble extends StatelessWidget {
@@ -9,6 +10,8 @@ class MessageBubble extends StatelessWidget {
     required this.fromMe,
     required this.timestamp,
     this.senderLabel,
+    this.deliveryState,
+    this.onRetryTap,
   });
 
   final String body;
@@ -18,6 +21,14 @@ class MessageBubble extends StatelessWidget {
   /// When non-null and [fromMe] is false, renders a small gray label line
   /// above the bubble showing the truncated sender pubkey.
   final String? senderLabel;
+
+  /// Per-message delivery progress. Only rendered for outbound bubbles
+  /// (`fromMe == true`); inbound bubbles ignore it.
+  final DeliveryState? deliveryState;
+
+  /// Tap callback for the failed tick. Wired only when [deliveryState] is
+  /// [DeliveryState.failed]; ignored otherwise.
+  final VoidCallback? onRetryTap;
 
   @override
   Widget build(BuildContext context) {
@@ -78,6 +89,14 @@ class MessageBubble extends StatelessWidget {
                       color: bubbleFg.withValues(alpha: 0.7),
                     ),
                   ),
+                  if (fromMe && deliveryState != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: _TickIcon(
+                        state: deliveryState!,
+                        onRetryTap: onRetryTap,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -89,4 +108,32 @@ class MessageBubble extends StatelessWidget {
 
   String _hhmm(DateTime at) =>
       '${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}';
+}
+
+class _TickIcon extends StatelessWidget {
+  const _TickIcon({required this.state, this.onRetryTap});
+  final DeliveryState state;
+  final VoidCallback? onRetryTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6);
+    switch (state) {
+      case DeliveryState.sent:
+        return Icon(Icons.check, size: 12, color: muted);
+      case DeliveryState.delivered:
+        return Icon(Icons.done_all, size: 12, color: muted);
+      case DeliveryState.read:
+        return const Icon(Icons.done_all, size: 12, color: AppColors.accent);
+      case DeliveryState.failed:
+        return GestureDetector(
+          onTap: onRetryTap,
+          child: Tooltip(
+            message: 'Tap to retry',
+            child: Icon(Icons.error_outline,
+                size: 12, color: Theme.of(context).colorScheme.error),
+          ),
+        );
+    }
+  }
 }
