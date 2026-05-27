@@ -1021,6 +1021,21 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _knownTicksMeta = const VerificationMeta(
+    'knownTicks',
+  );
+  @override
+  late final GeneratedColumn<bool> knownTicks = GeneratedColumn<bool>(
+    'known_ticks',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("known_ticks" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1033,6 +1048,7 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
     kind,
     deliveryState,
     readAt,
+    knownTicks,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1112,6 +1128,12 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
         readAt.isAcceptableOrUnknown(data['read_at']!, _readAtMeta),
       );
     }
+    if (data.containsKey('known_ticks')) {
+      context.handle(
+        _knownTicksMeta,
+        knownTicks.isAcceptableOrUnknown(data['known_ticks']!, _knownTicksMeta),
+      );
+    }
     return context;
   }
 
@@ -1163,6 +1185,10 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}read_at'],
       ),
+      knownTicks: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}known_ticks'],
+      )!,
     );
   }
 
@@ -1186,6 +1212,7 @@ class Message extends DataClass implements Insertable<Message> {
   final String kind;
   final DeliveryState deliveryState;
   final DateTime? readAt;
+  final bool knownTicks;
   const Message({
     required this.id,
     required this.chatId,
@@ -1197,6 +1224,7 @@ class Message extends DataClass implements Insertable<Message> {
     required this.kind,
     required this.deliveryState,
     this.readAt,
+    required this.knownTicks,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1219,6 +1247,7 @@ class Message extends DataClass implements Insertable<Message> {
     if (!nullToAbsent || readAt != null) {
       map['read_at'] = Variable<DateTime>(readAt);
     }
+    map['known_ticks'] = Variable<bool>(knownTicks);
     return map;
   }
 
@@ -1238,6 +1267,7 @@ class Message extends DataClass implements Insertable<Message> {
       readAt: readAt == null && nullToAbsent
           ? const Value.absent()
           : Value(readAt),
+      knownTicks: Value(knownTicks),
     );
   }
 
@@ -1259,6 +1289,7 @@ class Message extends DataClass implements Insertable<Message> {
         serializer.fromJson<int>(json['deliveryState']),
       ),
       readAt: serializer.fromJson<DateTime?>(json['readAt']),
+      knownTicks: serializer.fromJson<bool>(json['knownTicks']),
     );
   }
   @override
@@ -1277,6 +1308,7 @@ class Message extends DataClass implements Insertable<Message> {
         $MessagesTable.$converterdeliveryState.toJson(deliveryState),
       ),
       'readAt': serializer.toJson<DateTime?>(readAt),
+      'knownTicks': serializer.toJson<bool>(knownTicks),
     };
   }
 
@@ -1291,6 +1323,7 @@ class Message extends DataClass implements Insertable<Message> {
     String? kind,
     DeliveryState? deliveryState,
     Value<DateTime?> readAt = const Value.absent(),
+    bool? knownTicks,
   }) => Message(
     id: id ?? this.id,
     chatId: chatId ?? this.chatId,
@@ -1302,6 +1335,7 @@ class Message extends DataClass implements Insertable<Message> {
     kind: kind ?? this.kind,
     deliveryState: deliveryState ?? this.deliveryState,
     readAt: readAt.present ? readAt.value : this.readAt,
+    knownTicks: knownTicks ?? this.knownTicks,
   );
   Message copyWithCompanion(MessagesCompanion data) {
     return Message(
@@ -1321,6 +1355,9 @@ class Message extends DataClass implements Insertable<Message> {
           ? data.deliveryState.value
           : this.deliveryState,
       readAt: data.readAt.present ? data.readAt.value : this.readAt,
+      knownTicks: data.knownTicks.present
+          ? data.knownTicks.value
+          : this.knownTicks,
     );
   }
 
@@ -1336,7 +1373,8 @@ class Message extends DataClass implements Insertable<Message> {
           ..write('receivedAt: $receivedAt, ')
           ..write('kind: $kind, ')
           ..write('deliveryState: $deliveryState, ')
-          ..write('readAt: $readAt')
+          ..write('readAt: $readAt, ')
+          ..write('knownTicks: $knownTicks')
           ..write(')'))
         .toString();
   }
@@ -1353,6 +1391,7 @@ class Message extends DataClass implements Insertable<Message> {
     kind,
     deliveryState,
     readAt,
+    knownTicks,
   );
   @override
   bool operator ==(Object other) =>
@@ -1367,7 +1406,8 @@ class Message extends DataClass implements Insertable<Message> {
           other.receivedAt == this.receivedAt &&
           other.kind == this.kind &&
           other.deliveryState == this.deliveryState &&
-          other.readAt == this.readAt);
+          other.readAt == this.readAt &&
+          other.knownTicks == this.knownTicks);
 }
 
 class MessagesCompanion extends UpdateCompanion<Message> {
@@ -1381,6 +1421,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
   final Value<String> kind;
   final Value<DeliveryState> deliveryState;
   final Value<DateTime?> readAt;
+  final Value<bool> knownTicks;
   final Value<int> rowid;
   const MessagesCompanion({
     this.id = const Value.absent(),
@@ -1393,6 +1434,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     this.kind = const Value.absent(),
     this.deliveryState = const Value.absent(),
     this.readAt = const Value.absent(),
+    this.knownTicks = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   MessagesCompanion.insert({
@@ -1406,6 +1448,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     this.kind = const Value.absent(),
     this.deliveryState = const Value.absent(),
     this.readAt = const Value.absent(),
+    this.knownTicks = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        chatId = Value(chatId),
@@ -1424,6 +1467,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     Expression<String>? kind,
     Expression<int>? deliveryState,
     Expression<DateTime>? readAt,
+    Expression<bool>? knownTicks,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1437,6 +1481,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
       if (kind != null) 'kind': kind,
       if (deliveryState != null) 'delivery_state': deliveryState,
       if (readAt != null) 'read_at': readAt,
+      if (knownTicks != null) 'known_ticks': knownTicks,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1452,6 +1497,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     Value<String>? kind,
     Value<DeliveryState>? deliveryState,
     Value<DateTime?>? readAt,
+    Value<bool>? knownTicks,
     Value<int>? rowid,
   }) {
     return MessagesCompanion(
@@ -1465,6 +1511,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
       kind: kind ?? this.kind,
       deliveryState: deliveryState ?? this.deliveryState,
       readAt: readAt ?? this.readAt,
+      knownTicks: knownTicks ?? this.knownTicks,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1504,6 +1551,9 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     if (readAt.present) {
       map['read_at'] = Variable<DateTime>(readAt.value);
     }
+    if (knownTicks.present) {
+      map['known_ticks'] = Variable<bool>(knownTicks.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1523,6 +1573,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
           ..write('kind: $kind, ')
           ..write('deliveryState: $deliveryState, ')
           ..write('readAt: $readAt, ')
+          ..write('knownTicks: $knownTicks, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -5408,6 +5459,7 @@ typedef $$MessagesTableCreateCompanionBuilder =
       Value<String> kind,
       Value<DeliveryState> deliveryState,
       Value<DateTime?> readAt,
+      Value<bool> knownTicks,
       Value<int> rowid,
     });
 typedef $$MessagesTableUpdateCompanionBuilder =
@@ -5422,6 +5474,7 @@ typedef $$MessagesTableUpdateCompanionBuilder =
       Value<String> kind,
       Value<DeliveryState> deliveryState,
       Value<DateTime?> readAt,
+      Value<bool> knownTicks,
       Value<int> rowid,
     });
 
@@ -5484,6 +5537,11 @@ class $$MessagesTableFilterComposer
     column: $table.readAt,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<bool> get knownTicks => $composableBuilder(
+    column: $table.knownTicks,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$MessagesTableOrderingComposer
@@ -5544,6 +5602,11 @@ class $$MessagesTableOrderingComposer
     column: $table.readAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get knownTicks => $composableBuilder(
+    column: $table.knownTicks,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$MessagesTableAnnotationComposer
@@ -5591,6 +5654,11 @@ class $$MessagesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get readAt =>
       $composableBuilder(column: $table.readAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get knownTicks => $composableBuilder(
+    column: $table.knownTicks,
+    builder: (column) => column,
+  );
 }
 
 class $$MessagesTableTableManager
@@ -5631,6 +5699,7 @@ class $$MessagesTableTableManager
                 Value<String> kind = const Value.absent(),
                 Value<DeliveryState> deliveryState = const Value.absent(),
                 Value<DateTime?> readAt = const Value.absent(),
+                Value<bool> knownTicks = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MessagesCompanion(
                 id: id,
@@ -5643,6 +5712,7 @@ class $$MessagesTableTableManager
                 kind: kind,
                 deliveryState: deliveryState,
                 readAt: readAt,
+                knownTicks: knownTicks,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -5657,6 +5727,7 @@ class $$MessagesTableTableManager
                 Value<String> kind = const Value.absent(),
                 Value<DeliveryState> deliveryState = const Value.absent(),
                 Value<DateTime?> readAt = const Value.absent(),
+                Value<bool> knownTicks = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MessagesCompanion.insert(
                 id: id,
@@ -5669,6 +5740,7 @@ class $$MessagesTableTableManager
                 kind: kind,
                 deliveryState: deliveryState,
                 readAt: readAt,
+                knownTicks: knownTicks,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

@@ -67,6 +67,13 @@ class Messages extends Table {
   IntColumn get deliveryState =>
       intEnum<DeliveryState>().withDefault(const Constant(0))(); // sent
   DateTimeColumn get readAt => dateTime().nullable()();
+  // True only for outbound rows that went through the Phase 10.4.3b
+  // sendText path (which writes a canonical msgId + outbox row). False for
+  // every pre-1.0.5 row migrated from v7 — we have no way to know their
+  // real delivered/read state, so the UI hides the tick rather than show
+  // a misleading default `sent`. Inbound rows never read this column.
+  BoolColumn get knownTicks =>
+      boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -213,7 +220,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -298,6 +305,12 @@ class AppDatabase extends _$AppDatabase {
               await m.createTable(outbox);
               await m.addColumn(messages, messages.deliveryState);
               await m.addColumn(messages, messages.readAt);
+            } else if (v == 7) {
+              // 10.4.3b-ticks — additive: messages.known_ticks. Existing
+              // rows default to false (no provable delivery state); the
+              // chat UI hides the tick when known_ticks is false rather
+              // than showing a misleading single check.
+              await m.addColumn(messages, messages.knownTicks);
             }
           }
         },

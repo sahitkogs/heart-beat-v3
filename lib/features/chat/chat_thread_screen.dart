@@ -210,8 +210,19 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen>
                         senderLabel: label,
                       );
                     }
-                    // Outbound: subscribe to delivery state so the tick
-                    // re-renders when a receipt advances the state.
+                    // Outbound but pre-1.0.5 row — no provable delivery
+                    // state ever existed, so hide the tick entirely
+                    // instead of showing a misleading default `sent`.
+                    if (!m.knownTicks) {
+                      return MessageBubble(
+                        body: m.body,
+                        fromMe: true,
+                        timestamp: m.sentAt,
+                        senderLabel: label,
+                      );
+                    }
+                    // Outbound + known ticks: subscribe to delivery state
+                    // so the tick re-renders when a receipt advances it.
                     final svc = messageSvcAsync.valueOrNull;
                     if (svc == null) {
                       return MessageBubble(

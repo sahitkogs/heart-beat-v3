@@ -678,6 +678,7 @@ class MessageService {
       lamport: lamport,
       sentAt: now,
       kind: const Value('text'),
+      knownTicks: const Value(true),
     ));
     await dao.updateLastMessage(peerPubkeyHex, _preview(body), now);
   }
