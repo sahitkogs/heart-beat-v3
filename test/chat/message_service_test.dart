@@ -298,6 +298,44 @@ void main() {
     await db.close();
   });
 
+  test('inbound text persists with id = inner.msgId', () async {
+    final inner = InnerEnvelope.buildText(
+      chatId: peerPub, lamport: 1, body: 'hello',
+      msgId: 'fixed-msg-1',
+    );
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapMessage([0xCC, ...inner]),
+    ));
+    await drainMicrotasks();
+
+    final row = await dao.findMessageById('fixed-msg-1');
+    expect(row, isNotNull);
+    expect(row!.body, 'hello');
+    expect(row.senderPubkeyHex, peerPub);
+  });
+
+  test('duplicate inbound text is dropped silently', () async {
+    final inner = InnerEnvelope.buildText(
+      chatId: peerPub, lamport: 1, body: 'hi',
+      msgId: 'dup-1',
+    );
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapMessage([0xCC, ...inner]),
+    ));
+    await drainMicrotasks();
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapMessage([0xCC, ...inner]),
+    ));
+    await drainMicrotasks();
+
+    final rows = (await db.select(db.messages).get())
+        .where((r) => r.id == 'dup-1').toList();
+    expect(rows, hasLength(1));
+  });
+
   test('sendText writes an outbox row keyed by msgId', () async {
     // Get to a state where peer bundle is known so sendText doesn't just
     // queue: emit a peer bundle first.

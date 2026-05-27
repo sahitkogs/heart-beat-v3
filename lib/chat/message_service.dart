@@ -20,6 +20,7 @@ import '../services/crypto_service.dart';
 import '../services/notifications_service.dart';
 import '../services/signing_service.dart';
 import '../services/wake_client.dart';
+import 'delivery_receipt_debouncer.dart';
 import 'group_envelope.dart';
 import 'pre_key_bootstrap.dart';
 
@@ -40,6 +41,11 @@ class MessageService {
     required this.profileDao,
     this.wake,
   }) {
+    // Default no-op debouncer so the inbound text branch can fire
+    // receiptDebouncer.enqueueDelivered before attachLayerB has run (in tests,
+    // or before the provider has finished wiring). Task 12's attachLayerB
+    // overwrites this with the real DeliveryReceiptDebouncer.
+    receiptDebouncer = DeliveryReceiptDebouncer(null);
     _sub = relay.inbound.listen(_onInbound);
   }
 
@@ -80,6 +86,13 @@ class MessageService {
   // hand it to WakeClient.wake so the server can FCM-bridge it. Cleared for
   // a peer the moment we receive *any* inbound from them (proves online).
   final Map<String, List<List<int>>> _unackedByPeer = <String, List<List<int>>>{};
+
+  // Late-init so messageServiceProvider can hand back a debouncer that
+  // reaches back into `this`. Calling `enqueueDelivered` before assignment
+  // is a programming error and will throw LateInitializationError —
+  // covered by the provider lifecycle in Task 12. For now Task 7's stub
+  // is a no-op, so accidental pre-init calls would silently swallow.
+  late DeliveryReceiptDebouncer receiptDebouncer;
 
   /// Called when a chat thread is opened so both sides exchange bundles even
   /// before the first user-typed message. Idempotent.
@@ -856,6 +869,19 @@ class MessageService {
       return;
     }
 
+    // Phase 10.4.3b dedup — Layer A flush + Layer B retransmit can race to
+    // deliver the same envelope. A second arrival for the same (sender, msgId)
+    // is dropped silently but still triggers a `delivered` receipt because the
+    // sender's first receipt may have been lost.
+    final existing = await dao.findMessageById(inner.msgId);
+    if (existing != null && existing.senderPubkeyHex == frame.fromPubkeyHex) {
+      _log('dedup_inbound msgId=${_short(inner.msgId)} '
+          'from=${_short(frame.fromPubkeyHex)}');
+      receiptDebouncer.enqueueDelivered(
+          peer: frame.fromPubkeyHex, msgId: inner.msgId);
+      return;
+    }
+
     // T6.2 — route based on chat kind. The inner.chatId tells us which chat
     // this text belongs to; we verify the sender's authority for that chat.
     var chat = await dao.getChat(inner.chatId);
@@ -906,7 +932,7 @@ class MessageService {
     final lamport = await dao.observeLamport(inner.chatId, inner.lamport);
     final now = DateTime.now();
     await dao.insertMessage(MessagesCompanion.insert(
-      id: _uuid.v4(),
+      id: inner.msgId,
       chatId: inner.chatId,
       senderPubkeyHex: frame.fromPubkeyHex,
       body: body,
@@ -915,6 +941,11 @@ class MessageService {
       receivedAt: Value(now),
       kind: const Value('text'),
     ));
+    // Direct chats only — groups don't get receipts in this phase (§7l).
+    if (chat.kind == 'direct') {
+      receiptDebouncer.enqueueDelivered(
+          peer: frame.fromPubkeyHex, msgId: inner.msgId);
+    }
     // Group-tile preview includes the sender prefix so receivers can tell
     // who's talking. Phase 10.4.1 T7.4: use resolveName so the prefix is the
     // human-readable name (displayName ?? claimedName) when available, falling
