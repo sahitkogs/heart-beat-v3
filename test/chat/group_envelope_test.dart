@@ -33,6 +33,7 @@ void main() {
     test('text envelope round-trips', () {
       final bytes = InnerEnvelope.buildText(
         chatId: 'abc123', lamport: 42, body: 'hello',
+        msgId: 'm-text-1',
       );
       final parsed = InnerEnvelope.parse(bytes);
       expect(parsed, isA<TextEnvelope>());
@@ -106,6 +107,7 @@ void main() {
     test('TextEnvelope round-trip with senderDisplayName', () {
       final bytes = InnerEnvelope.buildText(
         chatId: 'c1', lamport: 1, body: 'hi',
+        msgId: 'm-text-2',
         senderDisplayName: 'Sahit',
       );
       final p = InnerEnvelope.parse(bytes) as TextEnvelope;
@@ -114,7 +116,7 @@ void main() {
     });
 
     test('TextEnvelope absent senderDisplayName parses to null', () {
-      final bytes = InnerEnvelope.buildText(chatId: 'c1', lamport: 1, body: 'hi');
+      final bytes = InnerEnvelope.buildText(chatId: 'c1', lamport: 1, body: 'hi', msgId: 'm-text-3');
       final p = InnerEnvelope.parse(bytes) as TextEnvelope;
       expect(p.senderDisplayName, isNull);
     });
@@ -159,6 +161,38 @@ void main() {
       );
       final p = InnerEnvelope.parse(bytes) as MemberLeaveEnvelope;
       expect(p.senderDisplayName, 'Bob');
+    });
+  });
+
+  group('TextEnvelope msgId', () {
+    test('buildText round-trips msgId', () {
+      final bytes = InnerEnvelope.buildText(
+        chatId: 'peerA', lamport: 1, body: 'hi',
+        msgId: '550e8400-e29b-41d4-a716-446655440000',
+      );
+      final parsed = InnerEnvelope.parse(bytes);
+      expect(parsed, isA<TextEnvelope>());
+      expect((parsed as TextEnvelope).msgId,
+          '550e8400-e29b-41d4-a716-446655440000');
+    });
+
+    test('parse generates UUID when msgId missing (v0 backwards-compat)', () {
+      final raw = utf8.encode(jsonEncode({
+        'v': 1, 'type': 'text',
+        'chatId': 'peerA', 'lamport': 1, 'body': 'old',
+      }));
+      final parsed = InnerEnvelope.parse(raw) as TextEnvelope;
+      expect(parsed.msgId, isNotEmpty);
+      expect(parsed.msgId.length, 36); // UUID v4 length
+    });
+
+    test('parse treats empty-string msgId as missing', () {
+      final raw = utf8.encode(jsonEncode({
+        'v': 1, 'type': 'text',
+        'chatId': 'peerA', 'lamport': 1, 'body': 'x', 'msgId': '',
+      }));
+      final parsed = InnerEnvelope.parse(raw) as TextEnvelope;
+      expect(parsed.msgId.length, 36);
     });
   });
 }

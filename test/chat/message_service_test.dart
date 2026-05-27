@@ -368,6 +368,7 @@ void main() {
       chatId: peerPub,
       lamport: 1,
       body: 'hi from peer',
+      msgId: 'msg-hi-from-peer',
     );
     final ciphertext = [0xCC, ...innerBytes];
     final envelope = EnvelopeWire.wrapMessage(ciphertext);
@@ -611,6 +612,7 @@ void main() {
             chatId: peerPub,
             lamport: 1,
             body: 'back online',
+            msgId: 'msg-back-online',
           )],
         ),
       ));
@@ -672,6 +674,7 @@ void main() {
         chatId: peerPub, // sender's (B's) own pubkey
         lamport: 1,
         body: 'hi',
+        msgId: 'msg-spoof-ok',
       );
       final ciphertext = [0xCC, ...innerBytes];
       final envelope = EnvelopeWire.wrapMessage(ciphertext);
@@ -692,6 +695,7 @@ void main() {
         chatId: thirdParty, // wrong — should be peerPub (the sender)
         lamport: 1,
         body: 'spoofed',
+        msgId: 'msg-spoof-bad',
       );
       final ciphertext = [0xCC, ...innerBytes];
       final envelope = EnvelopeWire.wrapMessage(ciphertext);
@@ -716,6 +720,7 @@ void main() {
       // Peer sends a text with senderDisplayName='Bobby'.
       final innerBytes = InnerEnvelope.buildText(
         chatId: peerPub, lamport: 1, body: 'hi',
+        msgId: 'msg-claim-bobby-1',
         senderDisplayName: 'Bobby',
       );
       relay.emit(DeliverFrame(
@@ -734,6 +739,7 @@ void main() {
       // No contact row for peerPub.
       final innerBytes = InnerEnvelope.buildText(
         chatId: peerPub, lamport: 1, body: 'hi',
+        msgId: 'msg-claim-bobby-2',
         senderDisplayName: 'Bobby',
       );
       relay.emit(DeliverFrame(
@@ -756,6 +762,7 @@ void main() {
       // First inbound sets claimedName='old'.
       final firstInner = InnerEnvelope.buildText(
         chatId: peerPub, lamport: 1, body: 'first',
+        msgId: 'msg-claim-first',
         senderDisplayName: 'old',
       );
       relay.emit(DeliverFrame(
@@ -770,6 +777,7 @@ void main() {
       // Second inbound with whitespace-only name should NOT overwrite.
       final secondInner = InnerEnvelope.buildText(
         chatId: peerPub, lamport: 2, body: 'second',
+        msgId: 'msg-claim-second',
         senderDisplayName: '   ',
       );
       relay.emit(DeliverFrame(
@@ -1950,6 +1958,7 @@ void main() {
         chatId: chatId,
         lamport: lamport,
         body: body,
+        msgId: 'msg-group-text-$chatId-$lamport',
       );
       final ciphertext = [0xCC, ...innerBytes];
       return EnvelopeWire.wrapMessage(ciphertext);

@@ -104,6 +104,7 @@ class MessageService {
       chatId: myPubkeyHex,
       lamport: lamport,
       body: body,
+      msgId: _uuid.v4(),
       senderDisplayName: myName,
     );
     await _persistOutbound(peerPubkeyHex, body, lamport);
@@ -259,6 +260,7 @@ class MessageService {
     final myName = await _currentDisplayName();
     final jsonBytes = InnerEnvelope.buildText(
       chatId: chatId, lamport: lamport, body: body,
+      msgId: _uuid.v4(),
       senderDisplayName: myName,
     );
 

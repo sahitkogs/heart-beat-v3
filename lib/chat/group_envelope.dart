@@ -1,5 +1,9 @@
 import 'dart:convert';
 
+import 'package:uuid/uuid.dart';
+
+const _uuidGen = Uuid();
+
 /// Canonical-bytes serializer for signature inputs.
 /// - Top-level keys sorted alphabetically (recursively).
 /// - No whitespace.
@@ -69,8 +73,16 @@ abstract class InnerEnvelope {
       case 'text':
         final body = raw['body'];
         if (body is! String) throw const FormatException('text missing body');
+        // Pre-Phase-2 peers may omit msgId. Generate a local UUID so the
+        // typed envelope can still be constructed; dedup against the same
+        // peer's retransmits is impossible (no canonical id), but no message
+        // is lost. Spec §10 backwards-compat clause.
+        final msgIdRaw = raw['msgId'];
+        final msgId = (msgIdRaw is String && msgIdRaw.isNotEmpty)
+            ? msgIdRaw
+            : _uuidGen.v4();
         return TextEnvelope(
-          chatId: chatId, lamport: lamport, body: body,
+          chatId: chatId, lamport: lamport, body: body, msgId: msgId,
           senderDisplayName: senderDisplayName,
         );
       case 'group_invite':
@@ -90,11 +102,13 @@ abstract class InnerEnvelope {
     required String chatId,
     required int lamport,
     required String body,
+    required String msgId,
     String? senderDisplayName,
   }) {
     return utf8.encode(jsonEncode({
       'v': 1, 'type': 'text',
       'chatId': chatId, 'lamport': lamport, 'body': body,
+      'msgId': msgId,
       'senderDisplayName': ?senderDisplayName,
     }));
   }
@@ -187,11 +201,13 @@ class TextEnvelope implements InnerEnvelope {
     required this.chatId,
     required this.lamport,
     required this.body,
+    required this.msgId,
     this.senderDisplayName,
   });
   @override final String chatId;
   @override final int lamport;
   final String body;
+  final String msgId;
   @override final String? senderDisplayName;
 }
 
