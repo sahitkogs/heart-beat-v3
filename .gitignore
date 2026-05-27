@@ -1,3 +1,7 @@
+# MCP server config — local-only (contains per-session bearer tokens for
+# danielealbano/android-remote-control-mcp instances running on emulators).
+.mcp.json
+
 # Miscellaneous
 *.class
 *.log
