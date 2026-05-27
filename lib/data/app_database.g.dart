@@ -1012,6 +1012,15 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   ).withConverter<DeliveryState>($MessagesTable.$converterdeliveryState);
+  static const VerificationMeta _readAtMeta = const VerificationMeta('readAt');
+  @override
+  late final GeneratedColumn<DateTime> readAt = GeneratedColumn<DateTime>(
+    'read_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1023,6 +1032,7 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
     receivedAt,
     kind,
     deliveryState,
+    readAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1096,6 +1106,12 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
         kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
       );
     }
+    if (data.containsKey('read_at')) {
+      context.handle(
+        _readAtMeta,
+        readAt.isAcceptableOrUnknown(data['read_at']!, _readAtMeta),
+      );
+    }
     return context;
   }
 
@@ -1143,6 +1159,10 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
           data['${effectivePrefix}delivery_state'],
         )!,
       ),
+      readAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}read_at'],
+      ),
     );
   }
 
@@ -1165,6 +1185,7 @@ class Message extends DataClass implements Insertable<Message> {
   final DateTime? receivedAt;
   final String kind;
   final DeliveryState deliveryState;
+  final DateTime? readAt;
   const Message({
     required this.id,
     required this.chatId,
@@ -1175,6 +1196,7 @@ class Message extends DataClass implements Insertable<Message> {
     this.receivedAt,
     required this.kind,
     required this.deliveryState,
+    this.readAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1194,6 +1216,9 @@ class Message extends DataClass implements Insertable<Message> {
         $MessagesTable.$converterdeliveryState.toSql(deliveryState),
       );
     }
+    if (!nullToAbsent || readAt != null) {
+      map['read_at'] = Variable<DateTime>(readAt);
+    }
     return map;
   }
 
@@ -1210,6 +1235,9 @@ class Message extends DataClass implements Insertable<Message> {
           : Value(receivedAt),
       kind: Value(kind),
       deliveryState: Value(deliveryState),
+      readAt: readAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(readAt),
     );
   }
 
@@ -1230,6 +1258,7 @@ class Message extends DataClass implements Insertable<Message> {
       deliveryState: $MessagesTable.$converterdeliveryState.fromJson(
         serializer.fromJson<int>(json['deliveryState']),
       ),
+      readAt: serializer.fromJson<DateTime?>(json['readAt']),
     );
   }
   @override
@@ -1247,6 +1276,7 @@ class Message extends DataClass implements Insertable<Message> {
       'deliveryState': serializer.toJson<int>(
         $MessagesTable.$converterdeliveryState.toJson(deliveryState),
       ),
+      'readAt': serializer.toJson<DateTime?>(readAt),
     };
   }
 
@@ -1260,6 +1290,7 @@ class Message extends DataClass implements Insertable<Message> {
     Value<DateTime?> receivedAt = const Value.absent(),
     String? kind,
     DeliveryState? deliveryState,
+    Value<DateTime?> readAt = const Value.absent(),
   }) => Message(
     id: id ?? this.id,
     chatId: chatId ?? this.chatId,
@@ -1270,6 +1301,7 @@ class Message extends DataClass implements Insertable<Message> {
     receivedAt: receivedAt.present ? receivedAt.value : this.receivedAt,
     kind: kind ?? this.kind,
     deliveryState: deliveryState ?? this.deliveryState,
+    readAt: readAt.present ? readAt.value : this.readAt,
   );
   Message copyWithCompanion(MessagesCompanion data) {
     return Message(
@@ -1288,6 +1320,7 @@ class Message extends DataClass implements Insertable<Message> {
       deliveryState: data.deliveryState.present
           ? data.deliveryState.value
           : this.deliveryState,
+      readAt: data.readAt.present ? data.readAt.value : this.readAt,
     );
   }
 
@@ -1302,7 +1335,8 @@ class Message extends DataClass implements Insertable<Message> {
           ..write('sentAt: $sentAt, ')
           ..write('receivedAt: $receivedAt, ')
           ..write('kind: $kind, ')
-          ..write('deliveryState: $deliveryState')
+          ..write('deliveryState: $deliveryState, ')
+          ..write('readAt: $readAt')
           ..write(')'))
         .toString();
   }
@@ -1318,6 +1352,7 @@ class Message extends DataClass implements Insertable<Message> {
     receivedAt,
     kind,
     deliveryState,
+    readAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -1331,7 +1366,8 @@ class Message extends DataClass implements Insertable<Message> {
           other.sentAt == this.sentAt &&
           other.receivedAt == this.receivedAt &&
           other.kind == this.kind &&
-          other.deliveryState == this.deliveryState);
+          other.deliveryState == this.deliveryState &&
+          other.readAt == this.readAt);
 }
 
 class MessagesCompanion extends UpdateCompanion<Message> {
@@ -1344,6 +1380,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
   final Value<DateTime?> receivedAt;
   final Value<String> kind;
   final Value<DeliveryState> deliveryState;
+  final Value<DateTime?> readAt;
   final Value<int> rowid;
   const MessagesCompanion({
     this.id = const Value.absent(),
@@ -1355,6 +1392,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     this.receivedAt = const Value.absent(),
     this.kind = const Value.absent(),
     this.deliveryState = const Value.absent(),
+    this.readAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   MessagesCompanion.insert({
@@ -1367,6 +1405,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     this.receivedAt = const Value.absent(),
     this.kind = const Value.absent(),
     this.deliveryState = const Value.absent(),
+    this.readAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        chatId = Value(chatId),
@@ -1384,6 +1423,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     Expression<DateTime>? receivedAt,
     Expression<String>? kind,
     Expression<int>? deliveryState,
+    Expression<DateTime>? readAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1396,6 +1436,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
       if (receivedAt != null) 'received_at': receivedAt,
       if (kind != null) 'kind': kind,
       if (deliveryState != null) 'delivery_state': deliveryState,
+      if (readAt != null) 'read_at': readAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1410,6 +1451,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     Value<DateTime?>? receivedAt,
     Value<String>? kind,
     Value<DeliveryState>? deliveryState,
+    Value<DateTime?>? readAt,
     Value<int>? rowid,
   }) {
     return MessagesCompanion(
@@ -1422,6 +1464,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
       receivedAt: receivedAt ?? this.receivedAt,
       kind: kind ?? this.kind,
       deliveryState: deliveryState ?? this.deliveryState,
+      readAt: readAt ?? this.readAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1458,6 +1501,9 @@ class MessagesCompanion extends UpdateCompanion<Message> {
         $MessagesTable.$converterdeliveryState.toSql(deliveryState.value),
       );
     }
+    if (readAt.present) {
+      map['read_at'] = Variable<DateTime>(readAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1476,6 +1522,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
           ..write('receivedAt: $receivedAt, ')
           ..write('kind: $kind, ')
           ..write('deliveryState: $deliveryState, ')
+          ..write('readAt: $readAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -5360,6 +5407,7 @@ typedef $$MessagesTableCreateCompanionBuilder =
       Value<DateTime?> receivedAt,
       Value<String> kind,
       Value<DeliveryState> deliveryState,
+      Value<DateTime?> readAt,
       Value<int> rowid,
     });
 typedef $$MessagesTableUpdateCompanionBuilder =
@@ -5373,6 +5421,7 @@ typedef $$MessagesTableUpdateCompanionBuilder =
       Value<DateTime?> receivedAt,
       Value<String> kind,
       Value<DeliveryState> deliveryState,
+      Value<DateTime?> readAt,
       Value<int> rowid,
     });
 
@@ -5430,6 +5479,11 @@ class $$MessagesTableFilterComposer
     column: $table.deliveryState,
     builder: (column) => ColumnWithTypeConverterFilters(column),
   );
+
+  ColumnFilters<DateTime> get readAt => $composableBuilder(
+    column: $table.readAt,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$MessagesTableOrderingComposer
@@ -5485,6 +5539,11 @@ class $$MessagesTableOrderingComposer
     column: $table.deliveryState,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get readAt => $composableBuilder(
+    column: $table.readAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$MessagesTableAnnotationComposer
@@ -5529,6 +5588,9 @@ class $$MessagesTableAnnotationComposer
         column: $table.deliveryState,
         builder: (column) => column,
       );
+
+  GeneratedColumn<DateTime> get readAt =>
+      $composableBuilder(column: $table.readAt, builder: (column) => column);
 }
 
 class $$MessagesTableTableManager
@@ -5568,6 +5630,7 @@ class $$MessagesTableTableManager
                 Value<DateTime?> receivedAt = const Value.absent(),
                 Value<String> kind = const Value.absent(),
                 Value<DeliveryState> deliveryState = const Value.absent(),
+                Value<DateTime?> readAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MessagesCompanion(
                 id: id,
@@ -5579,6 +5642,7 @@ class $$MessagesTableTableManager
                 receivedAt: receivedAt,
                 kind: kind,
                 deliveryState: deliveryState,
+                readAt: readAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -5592,6 +5656,7 @@ class $$MessagesTableTableManager
                 Value<DateTime?> receivedAt = const Value.absent(),
                 Value<String> kind = const Value.absent(),
                 Value<DeliveryState> deliveryState = const Value.absent(),
+                Value<DateTime?> readAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MessagesCompanion.insert(
                 id: id,
@@ -5603,6 +5668,7 @@ class $$MessagesTableTableManager
                 receivedAt: receivedAt,
                 kind: kind,
                 deliveryState: deliveryState,
+                readAt: readAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

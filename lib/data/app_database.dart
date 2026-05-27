@@ -66,6 +66,7 @@ class Messages extends Table {
   TextColumn get kind => text().withDefault(const Constant('text'))();
   IntColumn get deliveryState =>
       intEnum<DeliveryState>().withDefault(const Constant(0))(); // sent
+  DateTimeColumn get readAt => dateTime().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -291,10 +292,12 @@ class AppDatabase extends _$AppDatabase {
               // createAll recreates every table from the current (v6) schema.
               await m.createAll();
             } else if (v == 6) {
-              // 10.4.3b — additive: outbox table + messages.delivery_state column.
-              // No data is dropped; existing messages keep delivery_state == 0 (sent).
+              // 10.4.3b — additive: outbox table + messages.delivery_state +
+              // messages.read_at. No data is dropped; existing messages keep
+              // delivery_state == 0 (sent) and read_at == NULL.
               await m.createTable(outbox);
               await m.addColumn(messages, messages.deliveryState);
+              await m.addColumn(messages, messages.readAt);
             }
           }
         },
