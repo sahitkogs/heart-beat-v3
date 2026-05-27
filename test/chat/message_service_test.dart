@@ -416,6 +416,45 @@ void main() {
     expect(await outboxDao.findByMsgId(msgId), isNotNull);
   });
 
+  test('read after delivered advances tick (outbox already drained)', () async {
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapPreKeyBundle(peerBundle()),
+    ));
+    await drainMicrotasks();
+
+    await service.sendText(peerPubkeyHex: peerPub, body: 'p');
+    final msgId = (await outboxDao.dueBefore(
+            DateTime.now().add(const Duration(days: 1))))
+        .firstWhere((r) => r.peerPubkeyHex == peerPub)
+        .msgId;
+
+    // Delivered first — drains the outbox row, advances state to delivered.
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapMessage([0xCC, ...InnerEnvelope.buildDeliveryReceipt(
+        chatId: myPub, msgIds: [msgId],
+        kind: ReceiptKind.delivered, at: DateTime.now())]),
+    ));
+    await drainMicrotasks();
+    expect((await dao.findMessageById(msgId))!.deliveryState,
+        DeliveryState.delivered);
+    expect(await outboxDao.findByMsgId(msgId), isNull);
+
+    // Read receipt arrives next — outbox row is gone, but the fallback
+    // spoof guard (messages.chatId == frame.fromPubkeyHex) should accept it.
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapMessage([0xCC, ...InnerEnvelope.buildDeliveryReceipt(
+        chatId: myPub, msgIds: [msgId],
+        kind: ReceiptKind.read, at: DateTime.now())]),
+    ));
+    await drainMicrotasks();
+
+    expect((await dao.findMessageById(msgId))!.deliveryState,
+        DeliveryState.read);
+  });
+
   test('delivered after read does not downgrade tick', () async {
     relay.emit(DeliverFrame(
       fromPubkeyHex: peerPub,
@@ -438,15 +477,9 @@ void main() {
     ));
     await drainMicrotasks();
 
-    // We need to re-insert the outbox row because the read receipt deleted
-    // it; otherwise the second receipt would hit the no-outbox skip branch.
-    // Instead, just verify the state stays at `read` after a delivered receipt
-    // would have been processed: re-insert a fresh outbox row, then send.
-    final now = DateTime.now();
-    await outboxDao.insert(
-      msgId: msgId, peerPubkeyHex: peerPub,
-      envelopeBytes: [1], createdAt: now, nextRetryAt: now,
-    );
+    // Outbox row is gone after the first receipt. Subsequent delivered
+    // arrives via the no-outbox fallback path. State must stay at `read`
+    // because advanceDeliveryStateIfHigher refuses ordinal downgrades.
     relay.emit(DeliverFrame(
       fromPubkeyHex: peerPub,
       envelope: EnvelopeWire.wrapMessage([0xCC, ...InnerEnvelope.buildDeliveryReceipt(
@@ -457,6 +490,43 @@ void main() {
 
     expect((await dao.findMessageById(msgId))!.deliveryState,
         DeliveryState.read);
+  });
+
+  test('receipt from wrong peer with no outbox row is ignored', () async {
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapPreKeyBundle(peerBundle()),
+    ));
+    await drainMicrotasks();
+
+    await service.sendText(peerPubkeyHex: peerPub, body: 'p');
+    final msgId = (await outboxDao.dueBefore(
+            DateTime.now().add(const Duration(days: 1))))
+        .firstWhere((r) => r.peerPubkeyHex == peerPub)
+        .msgId;
+
+    // Drain the outbox row via a legit delivered receipt.
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapMessage([0xCC, ...InnerEnvelope.buildDeliveryReceipt(
+        chatId: myPub, msgIds: [msgId],
+        kind: ReceiptKind.delivered, at: DateTime.now())]),
+    ));
+    await drainMicrotasks();
+
+    // Spoof attempt from a third party — fallback spoof guard via
+    // messages.chatId must reject.
+    final attacker = 'cc' * 32;
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: attacker,
+      envelope: EnvelopeWire.wrapMessage([0xCC, ...InnerEnvelope.buildDeliveryReceipt(
+        chatId: myPub, msgIds: [msgId],
+        kind: ReceiptKind.read, at: DateTime.now())]),
+    ));
+    await drainMicrotasks();
+
+    expect((await dao.findMessageById(msgId))!.deliveryState,
+        DeliveryState.delivered);
   });
 
   test('inbound text persists with id = inner.msgId', () async {

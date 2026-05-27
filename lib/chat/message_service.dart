@@ -1499,33 +1499,54 @@ class MessageService {
   }
 
   /// Inbound `delivery_receipt` — peer is acking message(s) we sent.
-  /// Spec §7e: spoof-guarded, monotonic, outbox row deleted on either kind.
+  /// Spec §7e: spoof-guarded, monotonic. The outbox row is deleted on the
+  /// FIRST receipt (delivered or read); subsequent receipts for the same
+  /// msgId fall back to the messages table for spoof verification so a
+  /// `read` arriving after `delivered` still advances the tick.
   Future<void> _handleDeliveryReceipt(
     DeliverFrame frame,
     DeliveryReceiptEnvelope inner,
   ) async {
     for (final mid in inner.msgIds) {
-      final outboxRow = await outboxDao.findByMsgId(mid);
-      if (outboxRow == null) {
-        // Either older than retention, peer clock drift, or a duplicate
-        // receipt arriving after the row was already deleted. Log + skip.
-        _log('receipt_no_outbox msgId=${_short(mid)} '
-            'from=${_short(frame.fromPubkeyHex)}');
-        continue;
-      }
-      if (outboxRow.peerPubkeyHex != frame.fromPubkeyHex) {
-        // Spoof guard — only the peer we originally sent to may ack.
-        _log('receipt_peer_mismatch msgId=${_short(mid)} '
-            'sentTo=${_short(outboxRow.peerPubkeyHex)} '
-            'from=${_short(frame.fromPubkeyHex)}');
-        continue;
-      }
       final newState = inner.kind == ReceiptKind.read
           ? DeliveryState.read
           : DeliveryState.delivered;
+
+      final outboxRow = await outboxDao.findByMsgId(mid);
+      if (outboxRow != null) {
+        // Primary spoof guard: ack must come from the peer we sent to.
+        if (outboxRow.peerPubkeyHex != frame.fromPubkeyHex) {
+          _log('receipt_peer_mismatch msgId=${_short(mid)} '
+              'sentTo=${_short(outboxRow.peerPubkeyHex)} '
+              'from=${_short(frame.fromPubkeyHex)}');
+          continue;
+        }
+        await dao.advanceDeliveryStateIfHigher(mid, newState);
+        await outboxDao.deleteByMsgId(mid);
+        _log('receipt_applied msgId=${_short(mid)} '
+            'kind=${inner.kind.name} from=${_short(frame.fromPubkeyHex)}');
+        continue;
+      }
+
+      // Outbox row already gone — typically a `read` arriving after
+      // `delivered` already drained the row. Fall back to the messages
+      // table for spoof verification: the ack peer must equal the chatId
+      // (direct chat) of an outbound message we sent.
+      final msg = await dao.findMessageById(mid);
+      if (msg == null) {
+        _log('receipt_unknown_msgId msgId=${_short(mid)} '
+            'from=${_short(frame.fromPubkeyHex)}');
+        continue;
+      }
+      if (msg.senderPubkeyHex != myPubkeyHex ||
+          msg.chatId != frame.fromPubkeyHex) {
+        _log('receipt_peer_mismatch_fallback msgId=${_short(mid)} '
+            'msgChat=${_short(msg.chatId)} '
+            'from=${_short(frame.fromPubkeyHex)}');
+        continue;
+      }
       await dao.advanceDeliveryStateIfHigher(mid, newState);
-      await outboxDao.deleteByMsgId(mid);
-      _log('receipt_applied msgId=${_short(mid)} '
+      _log('receipt_applied_no_outbox msgId=${_short(mid)} '
           'kind=${inner.kind.name} from=${_short(frame.fromPubkeyHex)}');
     }
   }
