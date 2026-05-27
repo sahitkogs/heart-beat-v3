@@ -22,6 +22,7 @@ import '../services/signing_service.dart';
 import '../services/wake_client.dart';
 import 'delivery_receipt_debouncer.dart';
 import 'group_envelope.dart';
+import 'outbox_retransmitter.dart';
 import 'pre_key_bootstrap.dart';
 
 /// Orchestrates the encrypt → send → persist and receive → decrypt → persist
@@ -81,11 +82,13 @@ class MessageService {
   final Map<String, List<List<int>>> _pendingByPeer = <String, List<List<int>>>{};
 
   // Late-init so messageServiceProvider can hand back a debouncer that
-  // reaches back into `this`. Calling `enqueueDelivered` before assignment
-  // is a programming error and will throw LateInitializationError —
-  // covered by the provider lifecycle in Task 12. For now Task 7's stub
-  // is a no-op, so accidental pre-init calls would silently swallow.
+  // reaches back into `this`. Default is a no-op stub (sender=null);
+  // attachLayerB replaces it with the real one in the production wiring.
   late DeliveryReceiptDebouncer receiptDebouncer;
+  // Same late-init pattern for the outbox sweeper. Tests that don't call
+  // attachLayerB leave this as a Timer-less, never-sweeping placeholder.
+  OutboxRetransmitter? _retransmitter;
+  OutboxRetransmitter? get retransmitter => _retransmitter;
 
   /// Called when a chat thread is opened so both sides exchange bundles even
   /// before the first user-typed message. Idempotent.
@@ -1569,7 +1572,25 @@ class MessageService {
     print('[MS] $msg');
   }
 
+  /// Constructs and assigns the receipt debouncer + outbox retransmitter
+  /// after the MessageService is built. Two-step wiring because both
+  /// helpers need a `this` reference, which a constructor can't supply.
+  /// Called by messageServiceProvider in production; tests that need the
+  /// real (non-stub) helpers can also opt in.
+  void attachLayerB() {
+    receiptDebouncer =
+        DeliveryReceiptDebouncer(_MessageServiceReceiptSender(this));
+    _retransmitter = OutboxRetransmitter(
+      outbox: outboxDao,
+      chats: dao,
+      sender: _MessageServiceRetransmitSender(this),
+    );
+    _retransmitter!.start();
+  }
+
   Future<void> dispose() async {
+    _retransmitter?.stop();
+    receiptDebouncer.dispose();
     await _sub.cancel();
   }
 
@@ -1584,4 +1605,22 @@ class MessageService {
     await crypto.forgetPeer(peerPubkeyHex);
     _log('forgetPeer cleared bundle+session for ${_short(peerPubkeyHex)}');
   }
+}
+
+class _MessageServiceReceiptSender implements ReceiptSender {
+  _MessageServiceReceiptSender(this._svc);
+  final MessageService _svc;
+  @override
+  Future<String?> currentDisplayName() => _svc._currentDisplayName();
+  @override
+  Future<void> encryptAndSend(String peer, List<int> envelopeBytes) =>
+      _svc._encryptAndSend(peer, envelopeBytes);
+}
+
+class _MessageServiceRetransmitSender implements RetransmitSender {
+  _MessageServiceRetransmitSender(this._svc);
+  final MessageService _svc;
+  @override
+  Future<void> sendOnce(String peer, List<int> envelopeBytes) =>
+      _svc._encryptAndSend(peer, envelopeBytes);
 }

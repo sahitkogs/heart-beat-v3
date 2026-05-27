@@ -72,6 +72,7 @@ final messageServiceProvider = FutureProvider<MessageService>((ref) async {
     contactsRepository: contactsRepository,
     profileDao: profileDao,
   );
+  svc.attachLayerB();
   ref.onDispose(() => svc.dispose());
   return svc;
 });
