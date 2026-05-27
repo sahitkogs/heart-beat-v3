@@ -63,6 +63,9 @@ class _FakeRelay implements RelayClient {
 
   @override
   SigningService get signing => throw UnimplementedError();
+
+  @override
+  bool get isConnected => true;
 }
 
 class _NoopSecureStorage implements SecureKeyValueStorage {
@@ -179,6 +182,9 @@ class _FakeCrypto implements CryptoService {
     }
     return ciphertext;
   }
+
+  @override
+  Future<void> forgetPeer(String peerPubkeyHex) async {}
 }
 
 /// A [CryptoService] wrapper that delegates all calls to [_inner] except
@@ -216,6 +222,9 @@ class _FailCryptoForPeer implements CryptoService {
     required List<int> ciphertext,
   }) =>
       _inner.decrypt(peerPubkeyHex: peerPubkeyHex, ciphertext: ciphertext);
+
+  @override
+  Future<void> forgetPeer(String peerPubkeyHex) => _inner.forgetPeer(peerPubkeyHex);
 }
 
 void main() {
