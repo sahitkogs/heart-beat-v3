@@ -862,6 +862,11 @@ class MessageService {
       return;
     }
 
+    if (inner is DeliveryReceiptEnvelope) {
+      await _handleDeliveryReceipt(frame, inner);
+      return;
+    }
+
     if (inner is! TextEnvelope) {
       // Defense-in-depth — all 5 envelope kinds are handled above, so this
       // branch should be unreachable. Log + drop if a new kind appears.
@@ -1511,6 +1516,38 @@ class MessageService {
     );
     _log('member_leave accepted chat=${_short(inv.chatId)} '
         'signer=${_short(frame.fromPubkeyHex)}');
+  }
+
+  /// Inbound `delivery_receipt` — peer is acking message(s) we sent.
+  /// Spec §7e: spoof-guarded, monotonic, outbox row deleted on either kind.
+  Future<void> _handleDeliveryReceipt(
+    DeliverFrame frame,
+    DeliveryReceiptEnvelope inner,
+  ) async {
+    for (final mid in inner.msgIds) {
+      final outboxRow = await outboxDao.findByMsgId(mid);
+      if (outboxRow == null) {
+        // Either older than retention, peer clock drift, or a duplicate
+        // receipt arriving after the row was already deleted. Log + skip.
+        _log('receipt_no_outbox msgId=${_short(mid)} '
+            'from=${_short(frame.fromPubkeyHex)}');
+        continue;
+      }
+      if (outboxRow.peerPubkeyHex != frame.fromPubkeyHex) {
+        // Spoof guard — only the peer we originally sent to may ack.
+        _log('receipt_peer_mismatch msgId=${_short(mid)} '
+            'sentTo=${_short(outboxRow.peerPubkeyHex)} '
+            'from=${_short(frame.fromPubkeyHex)}');
+        continue;
+      }
+      final newState = inner.kind == ReceiptKind.read
+          ? DeliveryState.read
+          : DeliveryState.delivered;
+      await dao.advanceDeliveryStateIfHigher(mid, newState);
+      await outboxDao.deleteByMsgId(mid);
+      _log('receipt_applied msgId=${_short(mid)} '
+          'kind=${inner.kind.name} from=${_short(frame.fromPubkeyHex)}');
+    }
   }
 
   /// Reads the local user's current display name from drift. Returns null

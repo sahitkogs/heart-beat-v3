@@ -298,6 +298,136 @@ void main() {
     await db.close();
   });
 
+  test('inbound delivered receipt advances state and deletes outbox row', () async {
+    // Bootstrap so sendText sends rather than queues.
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapPreKeyBundle(peerBundle()),
+    ));
+    await drainMicrotasks();
+
+    await service.sendText(peerPubkeyHex: peerPub, body: 'ping');
+    final outRows = await outboxDao.dueBefore(
+        DateTime.now().add(const Duration(days: 1)));
+    final msgId = outRows.firstWhere((r) => r.peerPubkeyHex == peerPub).msgId;
+
+    final receipt = InnerEnvelope.buildDeliveryReceipt(
+      chatId: myPub,
+      msgIds: [msgId],
+      kind: ReceiptKind.delivered,
+      at: DateTime.now(),
+    );
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapMessage([0xCC, ...receipt]),
+    ));
+    await drainMicrotasks();
+
+    final row = await dao.findMessageById(msgId);
+    expect(row!.deliveryState, DeliveryState.delivered);
+    expect(await outboxDao.findByMsgId(msgId), isNull);
+  });
+
+  test('read receipt allows direct sent -> read transition', () async {
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapPreKeyBundle(peerBundle()),
+    ));
+    await drainMicrotasks();
+
+    await service.sendText(peerPubkeyHex: peerPub, body: 'p');
+    final msgId = (await outboxDao.dueBefore(
+            DateTime.now().add(const Duration(days: 1))))
+        .firstWhere((r) => r.peerPubkeyHex == peerPub)
+        .msgId;
+
+    final r = InnerEnvelope.buildDeliveryReceipt(
+      chatId: myPub, msgIds: [msgId],
+      kind: ReceiptKind.read, at: DateTime.now(),
+    );
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapMessage([0xCC, ...r]),
+    ));
+    await drainMicrotasks();
+
+    expect((await dao.findMessageById(msgId))!.deliveryState,
+        DeliveryState.read);
+  });
+
+  test('forged receipt from wrong peer is ignored', () async {
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapPreKeyBundle(peerBundle()),
+    ));
+    await drainMicrotasks();
+
+    await service.sendText(peerPubkeyHex: peerPub, body: 'p');
+    final msgId = (await outboxDao.dueBefore(
+            DateTime.now().add(const Duration(days: 1))))
+        .firstWhere((r) => r.peerPubkeyHex == peerPub)
+        .msgId;
+
+    final attacker = 'cc' * 32;
+    final r = InnerEnvelope.buildDeliveryReceipt(
+      chatId: myPub, msgIds: [msgId],
+      kind: ReceiptKind.delivered, at: DateTime.now(),
+    );
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: attacker,
+      envelope: EnvelopeWire.wrapMessage([0xCC, ...r]),
+    ));
+    await drainMicrotasks();
+
+    // State unchanged, outbox row still present.
+    expect((await dao.findMessageById(msgId))!.deliveryState,
+        DeliveryState.sent);
+    expect(await outboxDao.findByMsgId(msgId), isNotNull);
+  });
+
+  test('delivered after read does not downgrade tick', () async {
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapPreKeyBundle(peerBundle()),
+    ));
+    await drainMicrotasks();
+
+    await service.sendText(peerPubkeyHex: peerPub, body: 'p');
+    final msgId = (await outboxDao.dueBefore(
+            DateTime.now().add(const Duration(days: 1))))
+        .firstWhere((r) => r.peerPubkeyHex == peerPub)
+        .msgId;
+
+    // Read first (legal — receipts can reorder).
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapMessage([0xCC, ...InnerEnvelope.buildDeliveryReceipt(
+        chatId: myPub, msgIds: [msgId],
+        kind: ReceiptKind.read, at: DateTime.now())]),
+    ));
+    await drainMicrotasks();
+
+    // We need to re-insert the outbox row because the read receipt deleted
+    // it; otherwise the second receipt would hit the no-outbox skip branch.
+    // Instead, just verify the state stays at `read` after a delivered receipt
+    // would have been processed: re-insert a fresh outbox row, then send.
+    final now = DateTime.now();
+    await outboxDao.insert(
+      msgId: msgId, peerPubkeyHex: peerPub,
+      envelopeBytes: [1], createdAt: now, nextRetryAt: now,
+    );
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapMessage([0xCC, ...InnerEnvelope.buildDeliveryReceipt(
+        chatId: myPub, msgIds: [msgId],
+        kind: ReceiptKind.delivered, at: DateTime.now())]),
+    ));
+    await drainMicrotasks();
+
+    expect((await dao.findMessageById(msgId))!.deliveryState,
+        DeliveryState.read);
+  });
+
   test('inbound text persists with id = inner.msgId', () async {
     final inner = InnerEnvelope.buildText(
       chatId: peerPub, lamport: 1, body: 'hello',
