@@ -52,9 +52,13 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen>
   /// `read` receipt back to them. Direct chats only — group bubbles skip
   /// receipts in this phase (spec §7l).
   Future<void> _markReadIfFocused() async {
-    final chat = ref.read(chatProvider(widget.chatId)).valueOrNull;
-    if (chat == null || chat.kind != 'direct') return;
     final svc = await ref.read(messageServiceProvider.future);
+    // Hit Drift directly — chatProvider is a StreamProvider so its
+    // valueOrNull is null on the first post-frame callback, which made
+    // the original chat-kind guard short-circuit before any read receipt
+    // could fire. getChat awaits the row read.
+    final chat = await svc.dao.getChat(widget.chatId);
+    if (chat == null || chat.kind != 'direct') return;
     final unread = await svc.dao.unreadInboundMsgIds(widget.chatId);
     if (unread.isEmpty) return;
     await svc.dao.markRead(unread);
