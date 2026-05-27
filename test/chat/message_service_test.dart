@@ -710,17 +710,12 @@ void main() {
       await drainMicrotasks();
     }
 
-    test('happy path: recipient_offline triggers wake with the queued envelope',
+    test('recipient_offline fires wake unconditionally (empty envelope)',
         () async {
+      // Spec §7m — Phase 10.4.3b drops the in-flight gate. Server-side queue
+      // (10.4.3a) holds the actual envelope; client wake is a marker-only
+      // FCM hint that fires every time, even without a matching in-flight.
       await setUpWith(() => const WakeResult(WakeStatus.ok));
-      await bootstrap();
-
-      await wakeService.sendText(peerPubkeyHex: peerPub, body: 'while offline');
-      final sentMessage = relay.sent
-          .lastWhere((f) => f.envelope.first == EnvelopeTag.message)
-          .envelope;
-
-      // Server says peer is offline AFTER the message was already handed off.
       relay.emit(ErrorFrame(
         code: 'recipient_offline',
         message: '',
@@ -731,73 +726,15 @@ void main() {
       expect(wake.calls, hasLength(1));
       expect(wake.calls.single.peer, peerPub);
       expect(wake.calls.single.sender, myPub);
-      expect(wake.calls.single.envelope, sentMessage,
-          reason: 'wake should carry the original encrypted envelope so the '
-              'background isolate can decrypt it cold');
+      expect(wake.calls.single.envelope, isEmpty,
+          reason: 'wake carries no payload — Layer A holds the real envelope');
     });
 
-    test('no in-flight envelope: bundle-send recipient_offline clears '
-        'bundleSent and skips wake', () async {
+    test('recipient_offline fires wake after sendText too', () async {
       await setUpWith(() => const WakeResult(WakeStatus.ok));
-      // openChat sends our bundle but there is no message in-flight.
-      await wakeService.openChat(peerPub);
-
-      // The bundle send sets bundleSentAt in PeerBundleStateDao.
-      final stateBefore = await peerBundleDao.get(peerPub);
-      expect(stateBefore?.bundleSentAt, isNotNull,
-          reason: 'bundleSentAt must be set after openChat sends our bundle');
-
-      // Relay reports the bundle recipient was offline — no message queue.
-      relay.emit(ErrorFrame(
-        code: 'recipient_offline',
-        message: '',
-        toPubkeyHex: peerPub,
-      ));
-      await drainMicrotasks();
-
-      // bundleSentAt must be cleared so the next openChat will retry.
-      final stateAfter = await peerBundleDao.get(peerPub);
-      expect(stateAfter?.bundleSentAt, isNull,
-          reason: 'clearBundleSent must be called when bundle send fails');
-
-      // No wake dispatch — there was no message envelope to bridge.
-      expect(wake.calls, isEmpty);
-    });
-
-    test('bundle-send recovery: after a failed bundle send, the next openChat '
-        'retries', () async {
-      await setUpWith(() => const WakeResult(WakeStatus.ok));
-      await wakeService.openChat(peerPub);
-      relay.emit(ErrorFrame(
-        code: 'recipient_offline',
-        message: '',
-        toPubkeyHex: peerPub,
-      ));
-      await drainMicrotasks();
-
-      final bundlesBefore = relay.sent
-          .where((f) => f.envelope.first == EnvelopeTag.preKeyBundle)
-          .length;
-
-      // Re-enter the chat (e.g., user navigates away and back).
-      await wakeService.openChat(peerPub);
-
-      final bundlesAfter = relay.sent
-          .where((f) => f.envelope.first == EnvelopeTag.preKeyBundle)
-          .length;
-      expect(bundlesAfter, bundlesBefore + 1,
-          reason: 'second openChat should re-send the bundle now that the '
-              'first attempt is known to have failed');
-    });
-
-    test('FCM error: wake is still dispatched once (status surfaced via logs)',
-        () async {
-      await setUpWith(() => const WakeResult(
-            WakeStatus.fcmError,
-            detail: 'FCM unavailable',
-          ));
       await bootstrap();
-      await wakeService.sendText(peerPubkeyHex: peerPub, body: 'errored');
+
+      await wakeService.sendText(peerPubkeyHex: peerPub, body: 'while offline');
 
       relay.emit(ErrorFrame(
         code: 'recipient_offline',
@@ -807,37 +744,32 @@ void main() {
       await drainMicrotasks();
 
       expect(wake.calls, hasLength(1));
-      // No retry, no exception — failure is logged structurally and the
-      // message stays in Alice's DB. (See "Known limitations carried into
-      // Phase 10.4+" in the roadmap.)
+      expect(wake.calls.single.peer, peerPub);
+      expect(wake.calls.single.envelope, isEmpty);
     });
 
-    test('inbound from peer clears the wake queue (peer is online again)',
+    test('FCM error: wake is still dispatched once (status surfaced via logs)',
         () async {
-      await setUpWith(() => const WakeResult(WakeStatus.ok));
-      await bootstrap();
-      await wakeService.sendText(peerPubkeyHex: peerPub, body: 'stale1');
-      await wakeService.sendText(peerPubkeyHex: peerPub, body: 'stale2');
-
-      // Peer replies — proves online.
-      relay.emit(DeliverFrame(
-        fromPubkeyHex: peerPub,
-        envelope: EnvelopeWire.wrapMessage(
-          [0xCC, ...InnerEnvelope.buildText(
-            chatId: peerPub,
-            lamport: 1,
-            body: 'back online',
-            msgId: 'msg-back-online',
-          )],
-        ),
-      ));
-      await drainMicrotasks();
-
-      // After the reply, a late `recipient_offline` for the peer should
-      // find an empty queue and not dispatch any wake.
+      await setUpWith(() => const WakeResult(
+            WakeStatus.fcmError,
+            detail: 'FCM unavailable',
+          ));
       relay.emit(ErrorFrame(
         code: 'recipient_offline',
         message: '',
+        toPubkeyHex: peerPub,
+      ));
+      await drainMicrotasks();
+
+      expect(wake.calls, hasLength(1));
+      // No retry, no exception — failure is logged structurally.
+    });
+
+    test('non-recipient_offline error does not fire wake', () async {
+      await setUpWith(() => const WakeResult(WakeStatus.ok));
+      relay.emit(ErrorFrame(
+        code: 'some_other_error',
+        message: 'whatever',
         toPubkeyHex: peerPub,
       ));
       await drainMicrotasks();

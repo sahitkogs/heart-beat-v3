@@ -80,13 +80,6 @@ class MessageService {
   // Entries are JSON inner-envelope bytes (List<int>), not raw strings.
   final Map<String, List<List<int>>> _pendingByPeer = <String, List<List<int>>>{};
 
-  // Envelopes (message ones only, NOT bundles) that we've handed to the
-  // relay but haven't proven made it to the peer. On a `recipient_offline`
-  // error for a peer, we pop the oldest unacked envelope for that peer and
-  // hand it to WakeClient.wake so the server can FCM-bridge it. Cleared for
-  // a peer the moment we receive *any* inbound from them (proves online).
-  final Map<String, List<List<int>>> _unackedByPeer = <String, List<List<int>>>{};
-
   // Late-init so messageServiceProvider can hand back a debouncer that
   // reaches back into `this`. Calling `enqueueDelivered` before assignment
   // is a programming error and will throw LateInitializationError —
@@ -692,7 +685,6 @@ class MessageService {
       plaintext: plaintext,
     );
     final envelope = EnvelopeWire.wrapMessage(ciphertext);
-    (_unackedByPeer[peerPubkeyHex] ??= <List<int>>[]).add(envelope);
     await relay.send(
       toPubkeyHex: peerPubkeyHex,
       envelope: envelope,
@@ -701,8 +693,6 @@ class MessageService {
 
   void _onInbound(RelayFrame frame) {
     if (frame is DeliverFrame) {
-      // Any inbound proves the peer is online; clear pending wake queue.
-      _unackedByPeer.remove(frame.fromPubkeyHex);
       _handleDeliver(frame);
     } else if (frame is ErrorFrame) {
       _handleError(frame);
@@ -715,35 +705,22 @@ class MessageService {
       return;
     }
     final peer = frame.toPubkeyHex!;
-    final queue = _unackedByPeer[peer];
-    if (queue == null || queue.isEmpty) {
-      // No unacked message envelope means this recipient_offline almost
-      // certainly came from a bundle send (bundle sends don't go into
-      // _unackedByPeer because the wake path skips them). _maybeSendOwnBundle
-      // already marked bundleSent on the relay.send call, so without this
-      // reset we'd never retry — every future openChat/sendText would
-      // short-circuit on "bundle already sent" and the peer never receives
-      // our bundle. Clearing here unblocks the next attempt. The rare
-      // "stale error after peer came online" race only costs us one extra
-      // bundle on the next send.
-      _log('wake_skipped no_in_flight peer=${_short(peer)} '
-          '(likely failed bundle send; resetting bundleSent for retry)');
-      await peerBundleDao.clearBundleSent(peer);
-      return;
-    }
-    final envelope = queue.removeAt(0);
-    if (queue.isEmpty) _unackedByPeer.remove(peer);
-
     final wakeClient = wake;
     if (wakeClient == null) {
-      _log('wake_unconfigured peer=${_short(peer)} envBytes=${envelope.length}');
+      _log('wake_unconfigured peer=${_short(peer)}');
       return;
     }
-    _log('wake_dispatching peer=${_short(peer)} envBytes=${envelope.length}');
+    // Spec §7m — wake fires on every recipient_offline. Phase 10.4.3a's
+    // server-side queue carries the actual envelope (whether the failed
+    // send was a bundle or a message); this wake is the "tap the recipient
+    // to come online" hint. Empty envelope is fine — server's
+    // wakeOfflineRecipient looks up the phonebook entry and pushes a
+    // marker-only FCM that the recipient's BG isolate reacts to.
+    _log('wake_dispatching peer=${_short(peer)} (unconditional)');
     final result = await wakeClient.wake(
       senderPubkeyHex: myPubkeyHex,
       recipientPubkeyHex: peer,
-      envelope: envelope,
+      envelope: const <int>[],
     );
     switch (result.status) {
       case WakeStatus.ok:
@@ -1603,7 +1580,6 @@ class MessageService {
   /// combine to silently route sends into an unrecoverable session.
   Future<void> forgetPeer(String peerPubkeyHex) async {
     _pendingByPeer.remove(peerPubkeyHex);
-    _unackedByPeer.remove(peerPubkeyHex);
     await peerBundleDao.deleteByPubkey(peerPubkeyHex);
     await crypto.forgetPeer(peerPubkeyHex);
     _log('forgetPeer cleared bundle+session for ${_short(peerPubkeyHex)}');
