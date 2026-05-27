@@ -1003,6 +1003,16 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
     defaultValue: const Constant('text'),
   );
   @override
+  late final GeneratedColumnWithTypeConverter<DeliveryState, int>
+  deliveryState = GeneratedColumn<int>(
+    'delivery_state',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  ).withConverter<DeliveryState>($MessagesTable.$converterdeliveryState);
+  @override
   List<GeneratedColumn> get $columns => [
     id,
     chatId,
@@ -1012,6 +1022,7 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
     sentAt,
     receivedAt,
     kind,
+    deliveryState,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1126,6 +1137,12 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
         DriftSqlType.string,
         data['${effectivePrefix}kind'],
       )!,
+      deliveryState: $MessagesTable.$converterdeliveryState.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}delivery_state'],
+        )!,
+      ),
     );
   }
 
@@ -1133,6 +1150,9 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
   $MessagesTable createAlias(String alias) {
     return $MessagesTable(attachedDatabase, alias);
   }
+
+  static JsonTypeConverter2<DeliveryState, int, int> $converterdeliveryState =
+      const EnumIndexConverter<DeliveryState>(DeliveryState.values);
 }
 
 class Message extends DataClass implements Insertable<Message> {
@@ -1144,6 +1164,7 @@ class Message extends DataClass implements Insertable<Message> {
   final DateTime sentAt;
   final DateTime? receivedAt;
   final String kind;
+  final DeliveryState deliveryState;
   const Message({
     required this.id,
     required this.chatId,
@@ -1153,6 +1174,7 @@ class Message extends DataClass implements Insertable<Message> {
     required this.sentAt,
     this.receivedAt,
     required this.kind,
+    required this.deliveryState,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1167,6 +1189,11 @@ class Message extends DataClass implements Insertable<Message> {
       map['received_at'] = Variable<DateTime>(receivedAt);
     }
     map['kind'] = Variable<String>(kind);
+    {
+      map['delivery_state'] = Variable<int>(
+        $MessagesTable.$converterdeliveryState.toSql(deliveryState),
+      );
+    }
     return map;
   }
 
@@ -1182,6 +1209,7 @@ class Message extends DataClass implements Insertable<Message> {
           ? const Value.absent()
           : Value(receivedAt),
       kind: Value(kind),
+      deliveryState: Value(deliveryState),
     );
   }
 
@@ -1199,6 +1227,9 @@ class Message extends DataClass implements Insertable<Message> {
       sentAt: serializer.fromJson<DateTime>(json['sentAt']),
       receivedAt: serializer.fromJson<DateTime?>(json['receivedAt']),
       kind: serializer.fromJson<String>(json['kind']),
+      deliveryState: $MessagesTable.$converterdeliveryState.fromJson(
+        serializer.fromJson<int>(json['deliveryState']),
+      ),
     );
   }
   @override
@@ -1213,6 +1244,9 @@ class Message extends DataClass implements Insertable<Message> {
       'sentAt': serializer.toJson<DateTime>(sentAt),
       'receivedAt': serializer.toJson<DateTime?>(receivedAt),
       'kind': serializer.toJson<String>(kind),
+      'deliveryState': serializer.toJson<int>(
+        $MessagesTable.$converterdeliveryState.toJson(deliveryState),
+      ),
     };
   }
 
@@ -1225,6 +1259,7 @@ class Message extends DataClass implements Insertable<Message> {
     DateTime? sentAt,
     Value<DateTime?> receivedAt = const Value.absent(),
     String? kind,
+    DeliveryState? deliveryState,
   }) => Message(
     id: id ?? this.id,
     chatId: chatId ?? this.chatId,
@@ -1234,6 +1269,7 @@ class Message extends DataClass implements Insertable<Message> {
     sentAt: sentAt ?? this.sentAt,
     receivedAt: receivedAt.present ? receivedAt.value : this.receivedAt,
     kind: kind ?? this.kind,
+    deliveryState: deliveryState ?? this.deliveryState,
   );
   Message copyWithCompanion(MessagesCompanion data) {
     return Message(
@@ -1249,6 +1285,9 @@ class Message extends DataClass implements Insertable<Message> {
           ? data.receivedAt.value
           : this.receivedAt,
       kind: data.kind.present ? data.kind.value : this.kind,
+      deliveryState: data.deliveryState.present
+          ? data.deliveryState.value
+          : this.deliveryState,
     );
   }
 
@@ -1262,7 +1301,8 @@ class Message extends DataClass implements Insertable<Message> {
           ..write('lamport: $lamport, ')
           ..write('sentAt: $sentAt, ')
           ..write('receivedAt: $receivedAt, ')
-          ..write('kind: $kind')
+          ..write('kind: $kind, ')
+          ..write('deliveryState: $deliveryState')
           ..write(')'))
         .toString();
   }
@@ -1277,6 +1317,7 @@ class Message extends DataClass implements Insertable<Message> {
     sentAt,
     receivedAt,
     kind,
+    deliveryState,
   );
   @override
   bool operator ==(Object other) =>
@@ -1289,7 +1330,8 @@ class Message extends DataClass implements Insertable<Message> {
           other.lamport == this.lamport &&
           other.sentAt == this.sentAt &&
           other.receivedAt == this.receivedAt &&
-          other.kind == this.kind);
+          other.kind == this.kind &&
+          other.deliveryState == this.deliveryState);
 }
 
 class MessagesCompanion extends UpdateCompanion<Message> {
@@ -1301,6 +1343,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
   final Value<DateTime> sentAt;
   final Value<DateTime?> receivedAt;
   final Value<String> kind;
+  final Value<DeliveryState> deliveryState;
   final Value<int> rowid;
   const MessagesCompanion({
     this.id = const Value.absent(),
@@ -1311,6 +1354,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     this.sentAt = const Value.absent(),
     this.receivedAt = const Value.absent(),
     this.kind = const Value.absent(),
+    this.deliveryState = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   MessagesCompanion.insert({
@@ -1322,6 +1366,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     required DateTime sentAt,
     this.receivedAt = const Value.absent(),
     this.kind = const Value.absent(),
+    this.deliveryState = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        chatId = Value(chatId),
@@ -1338,6 +1383,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     Expression<DateTime>? sentAt,
     Expression<DateTime>? receivedAt,
     Expression<String>? kind,
+    Expression<int>? deliveryState,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1349,6 +1395,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
       if (sentAt != null) 'sent_at': sentAt,
       if (receivedAt != null) 'received_at': receivedAt,
       if (kind != null) 'kind': kind,
+      if (deliveryState != null) 'delivery_state': deliveryState,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1362,6 +1409,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     Value<DateTime>? sentAt,
     Value<DateTime?>? receivedAt,
     Value<String>? kind,
+    Value<DeliveryState>? deliveryState,
     Value<int>? rowid,
   }) {
     return MessagesCompanion(
@@ -1373,6 +1421,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
       sentAt: sentAt ?? this.sentAt,
       receivedAt: receivedAt ?? this.receivedAt,
       kind: kind ?? this.kind,
+      deliveryState: deliveryState ?? this.deliveryState,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1404,6 +1453,11 @@ class MessagesCompanion extends UpdateCompanion<Message> {
     if (kind.present) {
       map['kind'] = Variable<String>(kind.value);
     }
+    if (deliveryState.present) {
+      map['delivery_state'] = Variable<int>(
+        $MessagesTable.$converterdeliveryState.toSql(deliveryState.value),
+      );
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1421,6 +1475,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
           ..write('sentAt: $sentAt, ')
           ..write('receivedAt: $receivedAt, ')
           ..write('kind: $kind, ')
+          ..write('deliveryState: $deliveryState, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2890,6 +2945,438 @@ class PeerBundleStateCompanion extends UpdateCompanion<PeerBundleStateData> {
           ..write('peerPubkeyHex: $peerPubkeyHex, ')
           ..write('bundleSentAt: $bundleSentAt, ')
           ..write('peerBundleReceivedAt: $peerBundleReceivedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $OutboxTable extends Outbox with TableInfo<$OutboxTable, OutboxData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $OutboxTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _msgIdMeta = const VerificationMeta('msgId');
+  @override
+  late final GeneratedColumn<String> msgId = GeneratedColumn<String>(
+    'msg_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _peerPubkeyHexMeta = const VerificationMeta(
+    'peerPubkeyHex',
+  );
+  @override
+  late final GeneratedColumn<String> peerPubkeyHex = GeneratedColumn<String>(
+    'peer_pubkey_hex',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _envelopeBytesMeta = const VerificationMeta(
+    'envelopeBytes',
+  );
+  @override
+  late final GeneratedColumn<Uint8List> envelopeBytes =
+      GeneratedColumn<Uint8List>(
+        'envelope_bytes',
+        aliasedName,
+        false,
+        type: DriftSqlType.blob,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _attemptMeta = const VerificationMeta(
+    'attempt',
+  );
+  @override
+  late final GeneratedColumn<int> attempt = GeneratedColumn<int>(
+    'attempt',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _nextRetryAtMeta = const VerificationMeta(
+    'nextRetryAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> nextRetryAt = GeneratedColumn<DateTime>(
+    'next_retry_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    msgId,
+    peerPubkeyHex,
+    envelopeBytes,
+    attempt,
+    nextRetryAt,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'outbox';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<OutboxData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('msg_id')) {
+      context.handle(
+        _msgIdMeta,
+        msgId.isAcceptableOrUnknown(data['msg_id']!, _msgIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_msgIdMeta);
+    }
+    if (data.containsKey('peer_pubkey_hex')) {
+      context.handle(
+        _peerPubkeyHexMeta,
+        peerPubkeyHex.isAcceptableOrUnknown(
+          data['peer_pubkey_hex']!,
+          _peerPubkeyHexMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_peerPubkeyHexMeta);
+    }
+    if (data.containsKey('envelope_bytes')) {
+      context.handle(
+        _envelopeBytesMeta,
+        envelopeBytes.isAcceptableOrUnknown(
+          data['envelope_bytes']!,
+          _envelopeBytesMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_envelopeBytesMeta);
+    }
+    if (data.containsKey('attempt')) {
+      context.handle(
+        _attemptMeta,
+        attempt.isAcceptableOrUnknown(data['attempt']!, _attemptMeta),
+      );
+    }
+    if (data.containsKey('next_retry_at')) {
+      context.handle(
+        _nextRetryAtMeta,
+        nextRetryAt.isAcceptableOrUnknown(
+          data['next_retry_at']!,
+          _nextRetryAtMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_nextRetryAtMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {msgId};
+  @override
+  OutboxData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return OutboxData(
+      msgId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}msg_id'],
+      )!,
+      peerPubkeyHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}peer_pubkey_hex'],
+      )!,
+      envelopeBytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}envelope_bytes'],
+      )!,
+      attempt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}attempt'],
+      )!,
+      nextRetryAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}next_retry_at'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $OutboxTable createAlias(String alias) {
+    return $OutboxTable(attachedDatabase, alias);
+  }
+}
+
+class OutboxData extends DataClass implements Insertable<OutboxData> {
+  final String msgId;
+  final String peerPubkeyHex;
+  final Uint8List envelopeBytes;
+  final int attempt;
+  final DateTime nextRetryAt;
+  final DateTime createdAt;
+  const OutboxData({
+    required this.msgId,
+    required this.peerPubkeyHex,
+    required this.envelopeBytes,
+    required this.attempt,
+    required this.nextRetryAt,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['msg_id'] = Variable<String>(msgId);
+    map['peer_pubkey_hex'] = Variable<String>(peerPubkeyHex);
+    map['envelope_bytes'] = Variable<Uint8List>(envelopeBytes);
+    map['attempt'] = Variable<int>(attempt);
+    map['next_retry_at'] = Variable<DateTime>(nextRetryAt);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  OutboxCompanion toCompanion(bool nullToAbsent) {
+    return OutboxCompanion(
+      msgId: Value(msgId),
+      peerPubkeyHex: Value(peerPubkeyHex),
+      envelopeBytes: Value(envelopeBytes),
+      attempt: Value(attempt),
+      nextRetryAt: Value(nextRetryAt),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory OutboxData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return OutboxData(
+      msgId: serializer.fromJson<String>(json['msgId']),
+      peerPubkeyHex: serializer.fromJson<String>(json['peerPubkeyHex']),
+      envelopeBytes: serializer.fromJson<Uint8List>(json['envelopeBytes']),
+      attempt: serializer.fromJson<int>(json['attempt']),
+      nextRetryAt: serializer.fromJson<DateTime>(json['nextRetryAt']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'msgId': serializer.toJson<String>(msgId),
+      'peerPubkeyHex': serializer.toJson<String>(peerPubkeyHex),
+      'envelopeBytes': serializer.toJson<Uint8List>(envelopeBytes),
+      'attempt': serializer.toJson<int>(attempt),
+      'nextRetryAt': serializer.toJson<DateTime>(nextRetryAt),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  OutboxData copyWith({
+    String? msgId,
+    String? peerPubkeyHex,
+    Uint8List? envelopeBytes,
+    int? attempt,
+    DateTime? nextRetryAt,
+    DateTime? createdAt,
+  }) => OutboxData(
+    msgId: msgId ?? this.msgId,
+    peerPubkeyHex: peerPubkeyHex ?? this.peerPubkeyHex,
+    envelopeBytes: envelopeBytes ?? this.envelopeBytes,
+    attempt: attempt ?? this.attempt,
+    nextRetryAt: nextRetryAt ?? this.nextRetryAt,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  OutboxData copyWithCompanion(OutboxCompanion data) {
+    return OutboxData(
+      msgId: data.msgId.present ? data.msgId.value : this.msgId,
+      peerPubkeyHex: data.peerPubkeyHex.present
+          ? data.peerPubkeyHex.value
+          : this.peerPubkeyHex,
+      envelopeBytes: data.envelopeBytes.present
+          ? data.envelopeBytes.value
+          : this.envelopeBytes,
+      attempt: data.attempt.present ? data.attempt.value : this.attempt,
+      nextRetryAt: data.nextRetryAt.present
+          ? data.nextRetryAt.value
+          : this.nextRetryAt,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OutboxData(')
+          ..write('msgId: $msgId, ')
+          ..write('peerPubkeyHex: $peerPubkeyHex, ')
+          ..write('envelopeBytes: $envelopeBytes, ')
+          ..write('attempt: $attempt, ')
+          ..write('nextRetryAt: $nextRetryAt, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    msgId,
+    peerPubkeyHex,
+    $driftBlobEquality.hash(envelopeBytes),
+    attempt,
+    nextRetryAt,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is OutboxData &&
+          other.msgId == this.msgId &&
+          other.peerPubkeyHex == this.peerPubkeyHex &&
+          $driftBlobEquality.equals(other.envelopeBytes, this.envelopeBytes) &&
+          other.attempt == this.attempt &&
+          other.nextRetryAt == this.nextRetryAt &&
+          other.createdAt == this.createdAt);
+}
+
+class OutboxCompanion extends UpdateCompanion<OutboxData> {
+  final Value<String> msgId;
+  final Value<String> peerPubkeyHex;
+  final Value<Uint8List> envelopeBytes;
+  final Value<int> attempt;
+  final Value<DateTime> nextRetryAt;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const OutboxCompanion({
+    this.msgId = const Value.absent(),
+    this.peerPubkeyHex = const Value.absent(),
+    this.envelopeBytes = const Value.absent(),
+    this.attempt = const Value.absent(),
+    this.nextRetryAt = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  OutboxCompanion.insert({
+    required String msgId,
+    required String peerPubkeyHex,
+    required Uint8List envelopeBytes,
+    this.attempt = const Value.absent(),
+    required DateTime nextRetryAt,
+    required DateTime createdAt,
+    this.rowid = const Value.absent(),
+  }) : msgId = Value(msgId),
+       peerPubkeyHex = Value(peerPubkeyHex),
+       envelopeBytes = Value(envelopeBytes),
+       nextRetryAt = Value(nextRetryAt),
+       createdAt = Value(createdAt);
+  static Insertable<OutboxData> custom({
+    Expression<String>? msgId,
+    Expression<String>? peerPubkeyHex,
+    Expression<Uint8List>? envelopeBytes,
+    Expression<int>? attempt,
+    Expression<DateTime>? nextRetryAt,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (msgId != null) 'msg_id': msgId,
+      if (peerPubkeyHex != null) 'peer_pubkey_hex': peerPubkeyHex,
+      if (envelopeBytes != null) 'envelope_bytes': envelopeBytes,
+      if (attempt != null) 'attempt': attempt,
+      if (nextRetryAt != null) 'next_retry_at': nextRetryAt,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  OutboxCompanion copyWith({
+    Value<String>? msgId,
+    Value<String>? peerPubkeyHex,
+    Value<Uint8List>? envelopeBytes,
+    Value<int>? attempt,
+    Value<DateTime>? nextRetryAt,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return OutboxCompanion(
+      msgId: msgId ?? this.msgId,
+      peerPubkeyHex: peerPubkeyHex ?? this.peerPubkeyHex,
+      envelopeBytes: envelopeBytes ?? this.envelopeBytes,
+      attempt: attempt ?? this.attempt,
+      nextRetryAt: nextRetryAt ?? this.nextRetryAt,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (msgId.present) {
+      map['msg_id'] = Variable<String>(msgId.value);
+    }
+    if (peerPubkeyHex.present) {
+      map['peer_pubkey_hex'] = Variable<String>(peerPubkeyHex.value);
+    }
+    if (envelopeBytes.present) {
+      map['envelope_bytes'] = Variable<Uint8List>(envelopeBytes.value);
+    }
+    if (attempt.present) {
+      map['attempt'] = Variable<int>(attempt.value);
+    }
+    if (nextRetryAt.present) {
+      map['next_retry_at'] = Variable<DateTime>(nextRetryAt.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OutboxCompanion(')
+          ..write('msgId: $msgId, ')
+          ..write('peerPubkeyHex: $peerPubkeyHex, ')
+          ..write('envelopeBytes: $envelopeBytes, ')
+          ..write('attempt: $attempt, ')
+          ..write('nextRetryAt: $nextRetryAt, ')
+          ..write('createdAt: $createdAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4374,6 +4861,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PeerBundleStateTable peerBundleState = $PeerBundleStateTable(
     this,
   );
+  late final $OutboxTable outbox = $OutboxTable(this);
   late final $ProfileTable profile = $ProfileTable(this);
   late final $SignalIdentityTable signalIdentity = $SignalIdentityTable(this);
   late final $SignalPreKeysTable signalPreKeys = $SignalPreKeysTable(this);
@@ -4394,6 +4882,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     groupMembers,
     groupOpsLog,
     peerBundleState,
+    outbox,
     profile,
     signalIdentity,
     signalPreKeys,
@@ -4870,6 +5359,7 @@ typedef $$MessagesTableCreateCompanionBuilder =
       required DateTime sentAt,
       Value<DateTime?> receivedAt,
       Value<String> kind,
+      Value<DeliveryState> deliveryState,
       Value<int> rowid,
     });
 typedef $$MessagesTableUpdateCompanionBuilder =
@@ -4882,6 +5372,7 @@ typedef $$MessagesTableUpdateCompanionBuilder =
       Value<DateTime> sentAt,
       Value<DateTime?> receivedAt,
       Value<String> kind,
+      Value<DeliveryState> deliveryState,
       Value<int> rowid,
     });
 
@@ -4933,6 +5424,12 @@ class $$MessagesTableFilterComposer
     column: $table.kind,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnWithTypeConverterFilters<DeliveryState, DeliveryState, int>
+  get deliveryState => $composableBuilder(
+    column: $table.deliveryState,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
 }
 
 class $$MessagesTableOrderingComposer
@@ -4983,6 +5480,11 @@ class $$MessagesTableOrderingComposer
     column: $table.kind,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get deliveryState => $composableBuilder(
+    column: $table.deliveryState,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$MessagesTableAnnotationComposer
@@ -5021,6 +5523,12 @@ class $$MessagesTableAnnotationComposer
 
   GeneratedColumn<String> get kind =>
       $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<DeliveryState, int> get deliveryState =>
+      $composableBuilder(
+        column: $table.deliveryState,
+        builder: (column) => column,
+      );
 }
 
 class $$MessagesTableTableManager
@@ -5059,6 +5567,7 @@ class $$MessagesTableTableManager
                 Value<DateTime> sentAt = const Value.absent(),
                 Value<DateTime?> receivedAt = const Value.absent(),
                 Value<String> kind = const Value.absent(),
+                Value<DeliveryState> deliveryState = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MessagesCompanion(
                 id: id,
@@ -5069,6 +5578,7 @@ class $$MessagesTableTableManager
                 sentAt: sentAt,
                 receivedAt: receivedAt,
                 kind: kind,
+                deliveryState: deliveryState,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -5081,6 +5591,7 @@ class $$MessagesTableTableManager
                 required DateTime sentAt,
                 Value<DateTime?> receivedAt = const Value.absent(),
                 Value<String> kind = const Value.absent(),
+                Value<DeliveryState> deliveryState = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MessagesCompanion.insert(
                 id: id,
@@ -5091,6 +5602,7 @@ class $$MessagesTableTableManager
                 sentAt: sentAt,
                 receivedAt: receivedAt,
                 kind: kind,
+                deliveryState: deliveryState,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -5922,6 +6434,225 @@ typedef $$PeerBundleStateTableProcessedTableManager =
         >,
       ),
       PeerBundleStateData,
+      PrefetchHooks Function()
+    >;
+typedef $$OutboxTableCreateCompanionBuilder =
+    OutboxCompanion Function({
+      required String msgId,
+      required String peerPubkeyHex,
+      required Uint8List envelopeBytes,
+      Value<int> attempt,
+      required DateTime nextRetryAt,
+      required DateTime createdAt,
+      Value<int> rowid,
+    });
+typedef $$OutboxTableUpdateCompanionBuilder =
+    OutboxCompanion Function({
+      Value<String> msgId,
+      Value<String> peerPubkeyHex,
+      Value<Uint8List> envelopeBytes,
+      Value<int> attempt,
+      Value<DateTime> nextRetryAt,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+class $$OutboxTableFilterComposer
+    extends Composer<_$AppDatabase, $OutboxTable> {
+  $$OutboxTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get msgId => $composableBuilder(
+    column: $table.msgId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get peerPubkeyHex => $composableBuilder(
+    column: $table.peerPubkeyHex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get envelopeBytes => $composableBuilder(
+    column: $table.envelopeBytes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get attempt => $composableBuilder(
+    column: $table.attempt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get nextRetryAt => $composableBuilder(
+    column: $table.nextRetryAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$OutboxTableOrderingComposer
+    extends Composer<_$AppDatabase, $OutboxTable> {
+  $$OutboxTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get msgId => $composableBuilder(
+    column: $table.msgId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get peerPubkeyHex => $composableBuilder(
+    column: $table.peerPubkeyHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<Uint8List> get envelopeBytes => $composableBuilder(
+    column: $table.envelopeBytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get attempt => $composableBuilder(
+    column: $table.attempt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get nextRetryAt => $composableBuilder(
+    column: $table.nextRetryAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$OutboxTableAnnotationComposer
+    extends Composer<_$AppDatabase, $OutboxTable> {
+  $$OutboxTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get msgId =>
+      $composableBuilder(column: $table.msgId, builder: (column) => column);
+
+  GeneratedColumn<String> get peerPubkeyHex => $composableBuilder(
+    column: $table.peerPubkeyHex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<Uint8List> get envelopeBytes => $composableBuilder(
+    column: $table.envelopeBytes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get attempt =>
+      $composableBuilder(column: $table.attempt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get nextRetryAt => $composableBuilder(
+    column: $table.nextRetryAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$OutboxTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $OutboxTable,
+          OutboxData,
+          $$OutboxTableFilterComposer,
+          $$OutboxTableOrderingComposer,
+          $$OutboxTableAnnotationComposer,
+          $$OutboxTableCreateCompanionBuilder,
+          $$OutboxTableUpdateCompanionBuilder,
+          (OutboxData, BaseReferences<_$AppDatabase, $OutboxTable, OutboxData>),
+          OutboxData,
+          PrefetchHooks Function()
+        > {
+  $$OutboxTableTableManager(_$AppDatabase db, $OutboxTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$OutboxTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$OutboxTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$OutboxTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> msgId = const Value.absent(),
+                Value<String> peerPubkeyHex = const Value.absent(),
+                Value<Uint8List> envelopeBytes = const Value.absent(),
+                Value<int> attempt = const Value.absent(),
+                Value<DateTime> nextRetryAt = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => OutboxCompanion(
+                msgId: msgId,
+                peerPubkeyHex: peerPubkeyHex,
+                envelopeBytes: envelopeBytes,
+                attempt: attempt,
+                nextRetryAt: nextRetryAt,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String msgId,
+                required String peerPubkeyHex,
+                required Uint8List envelopeBytes,
+                Value<int> attempt = const Value.absent(),
+                required DateTime nextRetryAt,
+                required DateTime createdAt,
+                Value<int> rowid = const Value.absent(),
+              }) => OutboxCompanion.insert(
+                msgId: msgId,
+                peerPubkeyHex: peerPubkeyHex,
+                envelopeBytes: envelopeBytes,
+                attempt: attempt,
+                nextRetryAt: nextRetryAt,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$OutboxTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $OutboxTable,
+      OutboxData,
+      $$OutboxTableFilterComposer,
+      $$OutboxTableOrderingComposer,
+      $$OutboxTableAnnotationComposer,
+      $$OutboxTableCreateCompanionBuilder,
+      $$OutboxTableUpdateCompanionBuilder,
+      (OutboxData, BaseReferences<_$AppDatabase, $OutboxTable, OutboxData>),
+      OutboxData,
       PrefetchHooks Function()
     >;
 typedef $$ProfileTableCreateCompanionBuilder =
@@ -6890,6 +7621,8 @@ class $AppDatabaseManager {
       $$GroupOpsLogTableTableManager(_db, _db.groupOpsLog);
   $$PeerBundleStateTableTableManager get peerBundleState =>
       $$PeerBundleStateTableTableManager(_db, _db.peerBundleState);
+  $$OutboxTableTableManager get outbox =>
+      $$OutboxTableTableManager(_db, _db.outbox);
   $$ProfileTableTableManager get profile =>
       $$ProfileTableTableManager(_db, _db.profile);
   $$SignalIdentityTableTableManager get signalIdentity =>
