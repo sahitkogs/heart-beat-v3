@@ -164,6 +164,48 @@ void main() {
     });
   });
 
+  group('DeliveryReceiptEnvelope', () {
+    test('buildDeliveryReceipt round-trip with delivered kind', () {
+      final at = DateTime.utc(2026, 5, 26, 15, 30, 45);
+      final bytes = InnerEnvelope.buildDeliveryReceipt(
+        chatId: 'peerA',
+        msgIds: ['uuid-1', 'uuid-2'],
+        kind: ReceiptKind.delivered,
+        at: at,
+      );
+      final parsed = InnerEnvelope.parse(bytes);
+      expect(parsed, isA<DeliveryReceiptEnvelope>());
+      final r = parsed as DeliveryReceiptEnvelope;
+      expect(r.chatId, 'peerA');
+      expect(r.lamport, 0);
+      expect(r.msgIds, ['uuid-1', 'uuid-2']);
+      expect(r.kind, ReceiptKind.delivered);
+      expect(r.at, at);
+    });
+
+    test('parse rejects unknown kind', () {
+      final raw = utf8.encode(jsonEncode({
+        'v': 1, 'type': 'delivery_receipt',
+        'chatId': 'p', 'lamport': 0,
+        'msgIds': ['x'],
+        'kind': 'bogus',
+        'at': DateTime.utc(2026, 1, 1).toIso8601String(),
+      }));
+      expect(() => InnerEnvelope.parse(raw), throwsFormatException);
+    });
+
+    test('parse rejects empty msgIds', () {
+      final raw = utf8.encode(jsonEncode({
+        'v': 1, 'type': 'delivery_receipt',
+        'chatId': 'p', 'lamport': 0,
+        'msgIds': <String>[],
+        'kind': 'delivered',
+        'at': DateTime.utc(2026, 1, 1).toIso8601String(),
+      }));
+      expect(() => InnerEnvelope.parse(raw), throwsFormatException);
+    });
+  });
+
   group('TextEnvelope msgId', () {
     test('buildText round-trips msgId', () {
       final bytes = InnerEnvelope.buildText(

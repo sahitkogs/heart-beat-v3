@@ -93,6 +93,8 @@ abstract class InnerEnvelope {
         return MemberRemoveEnvelope._fromJson(raw);
       case 'member_leave':
         return MemberLeaveEnvelope._fromJson(raw);
+      case 'delivery_receipt':
+        return DeliveryReceiptEnvelope._fromJson(raw);
       default:
         throw FormatException('unknown inner type: $type');
     }
@@ -191,6 +193,23 @@ abstract class InnerEnvelope {
       'chatId': chatId, 'lamport': lamport,
       'leftAt': leftAt.toUtc().toIso8601String(),
       'sig': sigHex,
+      'senderDisplayName': ?senderDisplayName,
+    }));
+  }
+
+  static List<int> buildDeliveryReceipt({
+    required String chatId,
+    required List<String> msgIds,
+    required ReceiptKind kind,
+    required DateTime at,
+    String? senderDisplayName,
+  }) {
+    return utf8.encode(jsonEncode({
+      'v': 1, 'type': 'delivery_receipt',
+      'chatId': chatId, 'lamport': 0,
+      'msgIds': msgIds,
+      'kind': kind == ReceiptKind.read ? 'read' : 'delivered',
+      'at': at.toUtc().toIso8601String(),
       'senderDisplayName': ?senderDisplayName,
     }));
   }
@@ -309,5 +328,49 @@ class MemberLeaveEnvelope implements InnerEnvelope {
   @override final int lamport;
   final DateTime leftAt;
   final String sigHex;
+  @override final String? senderDisplayName;
+}
+
+enum ReceiptKind { delivered, read }
+
+class DeliveryReceiptEnvelope implements InnerEnvelope {
+  DeliveryReceiptEnvelope({
+    required this.chatId,
+    required this.msgIds,
+    required this.kind,
+    required this.at,
+    this.senderDisplayName,
+  });
+
+  factory DeliveryReceiptEnvelope._fromJson(Map<String, dynamic> raw) {
+    final msgIds = (raw['msgIds'] as List?)?.cast<String>() ?? const [];
+    if (msgIds.isEmpty) {
+      throw const FormatException('delivery_receipt missing msgIds');
+    }
+    final kindStr = raw['kind'];
+    final kind = switch (kindStr) {
+      'delivered' => ReceiptKind.delivered,
+      'read' => ReceiptKind.read,
+      _ => throw FormatException('unknown receipt kind: $kindStr'),
+    };
+    final atStr = raw['at'];
+    if (atStr is! String) {
+      throw const FormatException('delivery_receipt missing at');
+    }
+    return DeliveryReceiptEnvelope(
+      chatId: raw['chatId'] as String,
+      msgIds: msgIds,
+      kind: kind,
+      at: DateTime.parse(atStr),
+      senderDisplayName: raw['senderDisplayName'] as String?,
+    );
+  }
+
+  @override final String chatId;
+  // Receipts don't advance the chat's lamport clock — they're metadata.
+  @override int get lamport => 0;
+  final List<String> msgIds;
+  final ReceiptKind kind;
+  final DateTime at;
   @override final String? senderDisplayName;
 }
