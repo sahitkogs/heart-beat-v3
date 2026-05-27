@@ -1,5 +1,6 @@
 import 'package:app_v3/data/app_database.dart';
 import 'package:app_v3/data/chats_dao.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -141,6 +142,101 @@ void main() {
       final c = await dao.getChat('g1');
       expect(c!.groupName, 'First');
       expect(c.creatorPubkeyHex, 'A');
+    });
+  });
+
+  group('delivery state', () {
+    test('advanceDeliveryStateIfHigher only moves forward', () async {
+      await dao.insertMessage(MessagesCompanion.insert(
+        id: 'm1', chatId: 'peerA', senderPubkeyHex: 'me',
+        body: 'hi', lamport: 1, sentAt: DateTime.now(),
+      ));
+
+      await dao.advanceDeliveryStateIfHigher('m1', DeliveryState.delivered);
+      final r1 = (await dao.findMessageById('m1'))!;
+      expect(r1.deliveryState, DeliveryState.delivered);
+
+      // Out-of-order downgrade attempt — must be a no-op.
+      await dao.advanceDeliveryStateIfHigher('m1', DeliveryState.sent);
+      final r2 = (await dao.findMessageById('m1'))!;
+      expect(r2.deliveryState, DeliveryState.delivered);
+
+      // Direct sent -> read is allowed (skips delivered).
+      await dao.insertMessage(MessagesCompanion.insert(
+        id: 'm2', chatId: 'peerA', senderPubkeyHex: 'me',
+        body: 'hi2', lamport: 2, sentAt: DateTime.now(),
+      ));
+      await dao.advanceDeliveryStateIfHigher('m2', DeliveryState.read);
+      expect((await dao.findMessageById('m2'))!.deliveryState, DeliveryState.read);
+    });
+
+    test('findMessageById round-trip and miss', () async {
+      await dao.insertMessage(MessagesCompanion.insert(
+        id: 'mX', chatId: 'peerA', senderPubkeyHex: 'peerA',
+        body: 'hi', lamport: 1, sentAt: DateTime.now(),
+      ));
+      expect((await dao.findMessageById('mX'))?.body, 'hi');
+      expect(await dao.findMessageById('nope'), isNull);
+    });
+
+    test('watchDeliveryState emits on change', () async {
+      await dao.insertMessage(MessagesCompanion.insert(
+        id: 'mW', chatId: 'peerA', senderPubkeyHex: 'me',
+        body: 'watch', lamport: 1, sentAt: DateTime.now(),
+      ));
+      final events = <DeliveryState>[];
+      final sub = dao.watchDeliveryState('mW').listen(events.add);
+      await pumpEventQueue();
+      await dao.advanceDeliveryStateIfHigher('mW', DeliveryState.delivered);
+      await pumpEventQueue();
+      await sub.cancel();
+      expect(events, contains(DeliveryState.sent));
+      expect(events, contains(DeliveryState.delivered));
+    });
+  });
+
+  group('read tracking', () {
+    test('unreadInboundMsgIds returns only unread inbound from peer', () async {
+      final now = DateTime.now();
+      // Inbound from peerA, unread:
+      await dao.insertMessage(MessagesCompanion.insert(
+        id: 'i1', chatId: 'peerA', senderPubkeyHex: 'peerA',
+        body: 'hi', lamport: 1, sentAt: now,
+      ));
+      // Inbound from peerA, already read:
+      await dao.insertMessage(MessagesCompanion.insert(
+        id: 'i2', chatId: 'peerA', senderPubkeyHex: 'peerA',
+        body: 'hi2', lamport: 2, sentAt: now,
+        readAt: Value(now),
+      ));
+      // Outbound (self):
+      await dao.insertMessage(MessagesCompanion.insert(
+        id: 'o1', chatId: 'peerA', senderPubkeyHex: 'me',
+        body: 'reply', lamport: 3, sentAt: now,
+      ));
+      // Inbound from a different peer:
+      await dao.insertMessage(MessagesCompanion.insert(
+        id: 'i3', chatId: 'peerB', senderPubkeyHex: 'peerB',
+        body: 'hey', lamport: 1, sentAt: now,
+      ));
+
+      final ids = await dao.unreadInboundMsgIds('peerA');
+      expect(ids, ['i1']);
+    });
+
+    test('markRead sets read_at on every id in the list', () async {
+      final now = DateTime.now();
+      await dao.insertMessage(MessagesCompanion.insert(
+        id: 'r1', chatId: 'p', senderPubkeyHex: 'p',
+        body: 'a', lamport: 1, sentAt: now,
+      ));
+      await dao.insertMessage(MessagesCompanion.insert(
+        id: 'r2', chatId: 'p', senderPubkeyHex: 'p',
+        body: 'b', lamport: 2, sentAt: now,
+      ));
+      await dao.markRead(['r1', 'r2']);
+      expect((await dao.findMessageById('r1'))!.readAt, isNotNull);
+      expect((await dao.findMessageById('r2'))!.readAt, isNotNull);
     });
   });
 }

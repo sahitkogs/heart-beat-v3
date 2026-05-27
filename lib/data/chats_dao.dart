@@ -116,4 +116,60 @@ class ChatsDao extends DatabaseAccessor<AppDatabase> with _$ChatsDaoMixin {
           .go();
     });
   }
+
+  /// Read a single message row by primary key. Used by `MessageService` to
+  /// dedup inbound text envelopes by msgId before insert.
+  Future<Message?> findMessageById(String msgId) =>
+      (select(messages)..where((m) => m.id.equals(msgId))).getSingleOrNull();
+
+  /// Move `delivery_state` forward iff the new ordinal is strictly greater
+  /// than the existing one. Receipts are best-effort and can arrive in any
+  /// order (e.g. read before delivered after a retransmit); this guards the
+  /// monotonic invariant. `failed` is a terminal side-state — callers should
+  /// not invoke this with `failed`; use `updateDeliveryState` instead.
+  Future<void> advanceDeliveryStateIfHigher(
+      String msgId, DeliveryState newState) async {
+    final current = await findMessageById(msgId);
+    if (current == null) return;
+    if (current.deliveryState.index >= newState.index) return;
+    await (update(messages)..where((m) => m.id.equals(msgId)))
+        .write(MessagesCompanion(deliveryState: Value(newState)));
+  }
+
+  /// Force-set `delivery_state`. Used by the retransmitter to flip a row to
+  /// `failed` after the max attempt / 24h expiry. Skips the monotonic guard
+  /// because `failed` is terminal and intentionally a "downgrade" from `sent`.
+  Future<void> updateDeliveryState(String msgId, DeliveryState state) async {
+    await (update(messages)..where((m) => m.id.equals(msgId)))
+        .write(MessagesCompanion(deliveryState: Value(state)));
+  }
+
+  /// Stream a single message's `delivery_state`. The chat UI subscribes per
+  /// outbound bubble so tick changes re-render without a full chat refresh.
+  Stream<DeliveryState> watchDeliveryState(String msgId) =>
+      (select(messages)..where((m) => m.id.equals(msgId)))
+          .watchSingleOrNull()
+          .map((row) => row?.deliveryState ?? DeliveryState.sent);
+
+  /// Returns ids of inbound (non-self) messages from [peerPubkeyHex] that
+  /// have not been locally marked read yet. Used by ChatThreadScreen to
+  /// batch a `read` receipt when the thread becomes visible.
+  Future<List<String>> unreadInboundMsgIds(String peerPubkeyHex) async {
+    final rows = await (select(messages)
+          ..where((m) =>
+              m.senderPubkeyHex.equals(peerPubkeyHex) &
+              m.chatId.equals(peerPubkeyHex) & // direct chats only
+              m.readAt.isNull()))
+        .get();
+    return rows.map((r) => r.id).toList();
+  }
+
+  /// Mark a batch of messages locally read (sets `read_at = now`). Local-only;
+  /// the read receipt back to the peer is sent separately by the debouncer.
+  Future<void> markRead(List<String> msgIds) async {
+    if (msgIds.isEmpty) return;
+    final now = DateTime.now();
+    await (update(messages)..where((m) => m.id.isIn(msgIds)))
+        .write(MessagesCompanion(readAt: Value(now)));
+  }
 }
