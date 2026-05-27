@@ -1601,9 +1601,10 @@ class MessageService {
   /// combine to silently route sends into an unrecoverable session.
   Future<void> forgetPeer(String peerPubkeyHex) async {
     _pendingByPeer.remove(peerPubkeyHex);
+    await outboxDao.markPeerFailed(peerPubkeyHex);
     await peerBundleDao.deleteByPubkey(peerPubkeyHex);
     await crypto.forgetPeer(peerPubkeyHex);
-    _log('forgetPeer cleared bundle+session for ${_short(peerPubkeyHex)}');
+    _log('forgetPeer cleared bundle+session+outbox for ${_short(peerPubkeyHex)}');
   }
 }
 

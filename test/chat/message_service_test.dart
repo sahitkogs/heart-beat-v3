@@ -298,6 +298,37 @@ void main() {
     await db.close();
   });
 
+  test("forgetPeer drops the peer's outbox rows", () async {
+    // Bootstrap so sendText writes outbox rows.
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapPreKeyBundle(peerBundle()),
+    ));
+    await drainMicrotasks();
+
+    final peerB = 'cc' * 32;
+    // Bootstrap peerB too.
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerB,
+      envelope: EnvelopeWire.wrapPreKeyBundle(peerBundle().copyWithOwner(peerB)),
+    ));
+    await drainMicrotasks();
+
+    await service.sendText(peerPubkeyHex: peerPub, body: 'a');
+    await service.sendText(peerPubkeyHex: peerB, body: 'b');
+    final preA = await outboxDao.dueBefore(
+        DateTime.now().add(const Duration(days: 1)));
+    expect(preA.where((r) => r.peerPubkeyHex == peerPub), isNotEmpty);
+    expect(preA.where((r) => r.peerPubkeyHex == peerB), isNotEmpty);
+
+    await service.forgetPeer(peerPub);
+
+    final postA = await outboxDao.dueBefore(
+        DateTime.now().add(const Duration(days: 1)));
+    expect(postA.where((r) => r.peerPubkeyHex == peerPub), isEmpty);
+    expect(postA.where((r) => r.peerPubkeyHex == peerB), isNotEmpty);
+  });
+
   test('inbound delivered receipt advances state and deletes outbox row', () async {
     // Bootstrap so sendText sends rather than queues.
     relay.emit(DeliverFrame(
