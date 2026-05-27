@@ -51,6 +51,7 @@ final messageServiceProvider = FutureProvider<MessageService>((ref) async {
   final relay = await ref.watch(relayClientProvider.future);
   final dao = ref.watch(chatsDaoProvider);
   final peerBundleDao = ref.watch(peerBundleStateDaoProvider);
+  final outboxDao = ref.watch(outboxDaoProvider);
   final wake = ref.watch(wakeClientProvider);
   final groupMembersDao = ref.watch(groupMembersDaoProvider);
   final groupOpsLogDao = ref.watch(groupOpsLogDaoProvider);
@@ -62,6 +63,7 @@ final messageServiceProvider = FutureProvider<MessageService>((ref) async {
     relay: relay,
     dao: dao,
     peerBundleDao: peerBundleDao,
+    outboxDao: outboxDao,
     myPubkeyHex: identity.publicKeyHex,
     wake: wake,
     groupMembersDao: groupMembersDao,

@@ -4,6 +4,7 @@ import '../data/app_database.dart';
 import '../data/chats_dao.dart';
 import '../data/group_members_dao.dart';
 import '../data/group_ops_log_dao.dart';
+import '../data/outbox_dao.dart';
 import '../data/peer_bundle_state_dao.dart';
 import '../data/profile_dao.dart';
 import '../features/contacts/contacts_provider.dart';
@@ -15,6 +16,11 @@ final chatsDaoProvider = Provider<ChatsDao>(
 final peerBundleStateDaoProvider = Provider<PeerBundleStateDao>((ref) {
   final db = ref.watch(appDatabaseProvider);
   return PeerBundleStateDao(db);
+});
+
+final outboxDaoProvider = Provider<OutboxDao>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  return OutboxDao(db);
 });
 
 final groupMembersDaoProvider = Provider<GroupMembersDao>((ref) {

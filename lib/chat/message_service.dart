@@ -10,6 +10,7 @@ import '../data/chats_dao.dart';
 import '../data/contacts_repository.dart';
 import '../data/group_members_dao.dart';
 import '../data/group_ops_log_dao.dart';
+import '../data/outbox_dao.dart';
 import '../data/peer_bundle_state_dao.dart';
 import '../data/profile_dao.dart';
 import '../util/display_name.dart';
@@ -30,6 +31,7 @@ class MessageService {
     required this.relay,
     required this.dao,
     required this.peerBundleDao,
+    required this.outboxDao,
     required this.myPubkeyHex,
     required this.groupMembersDao,
     required this.groupOpsLogDao,
@@ -45,6 +47,7 @@ class MessageService {
   final RelayClient relay;
   final ChatsDao dao;
   final PeerBundleStateDao peerBundleDao;
+  final OutboxDao outboxDao;
   final String myPubkeyHex;
   final GroupMembersDao groupMembersDao;
   final GroupOpsLogDao groupOpsLogDao;
@@ -94,6 +97,9 @@ class MessageService {
     await dao.ensureDirectChat(peerPubkeyHex);
     await _maybeSendOwnBundle(peerPubkeyHex);
 
+    // Single canonical id shared by messages.id, the outbox row, and
+    // inner.msgId so the recipient can dedup + receipt this exact message.
+    final msgId = _uuid.v4();
     // Compute lamport once; use it for both the persisted row and the
     // JSON inner envelope so they stay in sync.
     final lamport = await dao.bumpLamport(peerPubkeyHex);
@@ -104,10 +110,23 @@ class MessageService {
       chatId: myPubkeyHex,
       lamport: lamport,
       body: body,
-      msgId: _uuid.v4(),
+      msgId: msgId,
       senderDisplayName: myName,
     );
-    await _persistOutbound(peerPubkeyHex, body, lamport);
+    await _persistOutbound(peerPubkeyHex, body, lamport, msgId);
+
+    // Outbox row goes in BEFORE _encryptAndSend. If encrypt or send throws,
+    // the row stays; the retransmitter sweeps it on its next pass. If send
+    // succeeds, the row stays in implied-`sent` state until a `delivered`
+    // receipt arrives and deletes it.
+    final now = DateTime.now();
+    await outboxDao.insert(
+      msgId: msgId,
+      peerPubkeyHex: peerPubkeyHex,
+      envelopeBytes: jsonBytes,
+      createdAt: now,
+      nextRetryAt: now.add(const Duration(seconds: 30)),
+    );
 
     final peerState = await peerBundleDao.get(peerPubkeyHex);
     if (peerState?.peerBundleReceivedAt == null) {
@@ -118,10 +137,12 @@ class MessageService {
     }
     try {
       await _encryptAndSend(peerPubkeyHex, jsonBytes);
-      _log('encrypted+sent peer=${_short(peerPubkeyHex)}');
+      _log('encrypted+sent peer=${_short(peerPubkeyHex)} msgId=${_short(msgId)}');
     } catch (e, st) {
       _log('ENCRYPT FAIL peer=${_short(peerPubkeyHex)} err=$e\n$st');
-      rethrow;
+      // Do not rethrow — the outbox row is the recovery handle. The caller
+      // already got UI optimism from _persistOutbound. The retransmitter
+      // will retry; if it stays failing for 24h, the tick goes to `failed`.
     }
   }
 
@@ -637,10 +658,11 @@ class MessageService {
     String peerPubkeyHex,
     String body,
     int lamport,
+    String msgId,
   ) async {
     final now = DateTime.now();
     await dao.insertMessage(MessagesCompanion.insert(
-      id: _uuid.v4(),
+      id: msgId,
       chatId: peerPubkeyHex,
       senderPubkeyHex: myPubkeyHex,
       body: body,

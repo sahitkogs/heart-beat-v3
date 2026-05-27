@@ -12,6 +12,7 @@ import 'package:app_v3/data/contacts_repository.dart';
 import 'package:app_v3/data/group_members_dao.dart';
 import 'package:app_v3/data/group_ops_log_dao.dart';
 import 'package:app_v3/data/models/contact.dart' as contact_model;
+import 'package:app_v3/data/outbox_dao.dart';
 import 'package:app_v3/data/peer_bundle_state_dao.dart';
 import 'package:app_v3/data/profile_dao.dart';
 import 'package:app_v3/relay/relay_client.dart';
@@ -236,6 +237,7 @@ void main() {
   late AppDatabase db;
   late ChatsDao dao;
   late PeerBundleStateDao peerBundleDao;
+  late OutboxDao outboxDao;
   late GroupMembersDao groupMembersDao;
   late GroupOpsLogDao groupOpsLogDao;
   late SigningService signing;
@@ -268,6 +270,7 @@ void main() {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     dao = ChatsDao(db);
     peerBundleDao = PeerBundleStateDao(db);
+    outboxDao = OutboxDao(db);
     groupMembersDao = GroupMembersDao(db);
     groupOpsLogDao = GroupOpsLogDao(db);
     signing = await makeSigningService();
@@ -279,6 +282,7 @@ void main() {
       relay: relay,
       dao: dao,
       peerBundleDao: peerBundleDao,
+      outboxDao: outboxDao,
       myPubkeyHex: myPub,
       groupMembersDao: groupMembersDao,
       groupOpsLogDao: groupOpsLogDao,
@@ -292,6 +296,48 @@ void main() {
     await service.dispose();
     await relay.dispose();
     await db.close();
+  });
+
+  test('sendText writes an outbox row keyed by msgId', () async {
+    // Get to a state where peer bundle is known so sendText doesn't just
+    // queue: emit a peer bundle first.
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapPreKeyBundle(peerBundle()),
+    ));
+    await drainMicrotasks();
+
+    await service.sendText(peerPubkeyHex: peerPub, body: 'hello');
+
+    final allRows = await outboxDao.dueBefore(
+        DateTime.now().add(const Duration(days: 1)));
+    final peerRows = allRows.where((r) => r.peerPubkeyHex == peerPub).toList();
+    expect(peerRows, hasLength(1));
+    final msgId = peerRows.first.msgId;
+
+    // The messages.id row must match the outbox msgId.
+    final msgRow = await dao.findMessageById(msgId);
+    expect(msgRow, isNotNull);
+    expect(msgRow!.senderPubkeyHex, myPub);
+    expect(msgRow.body, 'hello');
+  });
+
+  test('sendText sets initial nextRetryAt to createdAt + 30s', () async {
+    relay.emit(DeliverFrame(
+      fromPubkeyHex: peerPub,
+      envelope: EnvelopeWire.wrapPreKeyBundle(peerBundle()),
+    ));
+    await drainMicrotasks();
+
+    final before = DateTime.now();
+    await service.sendText(peerPubkeyHex: peerPub, body: 'x');
+    final after = DateTime.now();
+    final rows = await outboxDao.dueBefore(after.add(const Duration(days: 1)));
+    final row = rows.firstWhere((r) => r.peerPubkeyHex == peerPub);
+    final delta = row.nextRetryAt.difference(row.createdAt);
+    expect(delta.inSeconds, inInclusiveRange(28, 32));
+    expect(row.createdAt.isAfter(before.subtract(const Duration(seconds: 1))),
+        isTrue);
   });
 
   test('first sendText sends bundle, persists row, queues encrypt', () async {
@@ -469,6 +515,7 @@ void main() {
         relay: relay,
         dao: dao,
         peerBundleDao: peerBundleDao,
+        outboxDao: outboxDao,
         myPubkeyHex: myPub,
         wake: wake,
         groupMembersDao: groupMembersDao,
@@ -1040,6 +1087,7 @@ void main() {
         relay: relay,
         dao: dao,
         peerBundleDao: peerBundleDao,
+        outboxDao: outboxDao,
         myPubkeyHex: myPub,
         groupMembersDao: groupMembersDao,
         groupOpsLogDao: groupOpsLogDao,
@@ -3028,6 +3076,7 @@ void main() {
         relay: relay1,
         dao: dao1,
         peerBundleDao: peerBundleDao1,
+        outboxDao: OutboxDao(db1),
         myPubkeyHex: myPub,
         groupMembersDao: GroupMembersDao(db1),
         groupOpsLogDao: GroupOpsLogDao(db1),
@@ -3063,6 +3112,7 @@ void main() {
         relay: relay2,
         dao: dao2,
         peerBundleDao: peerBundleDao2,
+        outboxDao: OutboxDao(db2),
         myPubkeyHex: myPub,
         groupMembersDao: GroupMembersDao(db2),
         groupOpsLogDao: GroupOpsLogDao(db2),
