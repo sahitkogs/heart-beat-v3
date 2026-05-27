@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../chat/group_envelope.dart';
 import '../../core/widgets/wordmark.dart';
 import '../../data/app_database.dart';
 import '../../data/models/contact.dart' as model;
@@ -23,8 +24,74 @@ class ChatThreadScreen extends ConsumerStatefulWidget {
   ConsumerState<ChatThreadScreen> createState() => _ChatThreadScreenState();
 }
 
-class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
+class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen>
+    with WidgetsBindingObserver {
   bool _openInvoked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Fire a one-shot read sweep on the first frame so direct chats opened
+    // from a notification or tile mark inbound text read immediately.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _markReadIfFocused());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _markReadIfFocused();
+  }
+
+  /// Marks unread inbound messages from the peer locally read AND enqueues a
+  /// `read` receipt back to them. Direct chats only — group bubbles skip
+  /// receipts in this phase (spec §7l).
+  Future<void> _markReadIfFocused() async {
+    final chat = ref.read(chatProvider(widget.chatId)).valueOrNull;
+    if (chat == null || chat.kind != 'direct') return;
+    final svc = await ref.read(messageServiceProvider.future);
+    final unread = await svc.dao.unreadInboundMsgIds(widget.chatId);
+    if (unread.isEmpty) return;
+    await svc.dao.markRead(unread);
+    svc.receiptDebouncer.enqueueRead(
+      peer: widget.chatId,
+      msgIds: unread,
+    );
+  }
+
+  /// Re-enqueues a failed outbound message into the outbox so the
+  /// retransmitter picks it up on its next sweep (within ~10s). Resets the
+  /// tick to `sent` so the user gets immediate feedback that the retry
+  /// kicked off.
+  Future<void> _retrySend(String msgId) async {
+    final svc = await ref.read(messageServiceProvider.future);
+    final msg = await svc.dao.findMessageById(msgId);
+    if (msg == null) return;
+    final myName = await svc.currentDisplayName();
+    final jsonBytes = InnerEnvelope.buildText(
+      chatId: svc.myPubkeyHex,
+      lamport: msg.lamport,
+      body: msg.body,
+      senderDisplayName: myName,
+      msgId: msgId,
+    );
+    final now = DateTime.now();
+    await svc.outboxDao.insert(
+      msgId: msgId,
+      peerPubkeyHex: widget.chatId,
+      envelopeBytes: jsonBytes,
+      createdAt: now,
+      nextRetryAt: now,
+    );
+    // failed is intentionally not monotonic — reset back to sent so the
+    // user gets immediate UI feedback that the retry kicked off.
+    await svc.dao.updateDeliveryState(msgId, DeliveryState.sent);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -130,11 +197,43 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                         ? _showSenderLabel(m, prev, me, chat, contactsByPk)
                         : null;
 
-                    return MessageBubble(
-                      body: m.body,
-                      fromMe: fromMe,
-                      timestamp: m.sentAt,
-                      senderLabel: label,
+                    // Inbound bubbles don't render a tick — render plain.
+                    if (!fromMe) {
+                      return MessageBubble(
+                        body: m.body,
+                        fromMe: false,
+                        timestamp: m.sentAt,
+                        senderLabel: label,
+                      );
+                    }
+                    // Outbound: subscribe to delivery state so the tick
+                    // re-renders when a receipt advances the state.
+                    final svc = messageSvcAsync.valueOrNull;
+                    if (svc == null) {
+                      return MessageBubble(
+                        body: m.body,
+                        fromMe: true,
+                        timestamp: m.sentAt,
+                        senderLabel: label,
+                        deliveryState: m.deliveryState,
+                      );
+                    }
+                    return StreamBuilder<DeliveryState>(
+                      stream: svc.dao.watchDeliveryState(m.id),
+                      initialData: m.deliveryState,
+                      builder: (context, snap) {
+                        final state = snap.data ?? DeliveryState.sent;
+                        return MessageBubble(
+                          body: m.body,
+                          fromMe: true,
+                          timestamp: m.sentAt,
+                          senderLabel: label,
+                          deliveryState: state,
+                          onRetryTap: state == DeliveryState.failed
+                              ? () => _retrySend(m.id)
+                              : null,
+                        );
+                      },
                     );
                   },
                 );

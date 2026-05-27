@@ -112,7 +112,7 @@ class MessageService {
     // Compute lamport once; use it for both the persisted row and the
     // JSON inner envelope so they stay in sync.
     final lamport = await dao.bumpLamport(peerPubkeyHex);
-    final myName = await _currentDisplayName();
+    final myName = await currentDisplayName();
     // chatId in the inner envelope is OUR pubkey (the sender's key), so that
     // the receiver's spoof guard (inner.chatId == frame.fromPubkeyHex) passes.
     final jsonBytes = InnerEnvelope.buildText(
@@ -216,7 +216,7 @@ class MessageService {
     final canonical = canonicalJsonBytes(inviteBody);
     final sigBytes = await signing.sign(canonical);
     final sigHex = bytesToHex(sigBytes);
-    final myName = await _currentDisplayName();
+    final myName = await currentDisplayName();
     final inviteBytes = InnerEnvelope.buildGroupInvite(
       chatId: chatId, groupName: name, creator: myPubkeyHex,
       members: members, createdAt: now,
@@ -287,7 +287,7 @@ class MessageService {
     ));
     await dao.updateLastMessage(chatId, _preview(body), now);
 
-    final myName = await _currentDisplayName();
+    final myName = await currentDisplayName();
     final jsonBytes = InnerEnvelope.buildText(
       chatId: chatId, lamport: lamport, body: body,
       msgId: _uuid.v4(),
@@ -371,7 +371,7 @@ class MessageService {
     final addCanonical = canonicalJsonBytes(addBody);
     final addSig = await signing.sign(addCanonical);
     final addSigHex = bytesToHex(addSig);
-    final myName = await _currentDisplayName();
+    final myName = await currentDisplayName();
     final addBytes = InnerEnvelope.buildMemberAdd(
       chatId: chatId, lamport: lamport, target: newMemberPubkeyHex,
       addedAt: now, opSeq: newOpSeq, sigHex: addSigHex,
@@ -510,7 +510,7 @@ class MessageService {
     final canonical = canonicalJsonBytes(removeBody);
     final sigBytes = await signing.sign(canonical);
     final sigHex = bytesToHex(sigBytes);
-    final myName = await _currentDisplayName();
+    final myName = await currentDisplayName();
     final removeBytes = InnerEnvelope.buildMemberRemove(
       chatId: chatId, lamport: lamport, target: targetPubkeyHex,
       removedAt: now, opSeq: newOpSeq, sigHex: sigHex,
@@ -596,7 +596,7 @@ class MessageService {
     final canonical = canonicalJsonBytes(leaveBody);
     final sigBytes = await signing.sign(canonical);
     final sigHex = bytesToHex(sigBytes);
-    final myName = await _currentDisplayName();
+    final myName = await currentDisplayName();
     final leaveBytes = InnerEnvelope.buildMemberLeave(
       chatId: chatId, lamport: lamport,
       leftAt: now, sigHex: sigHex,
@@ -1535,7 +1535,7 @@ class MessageService {
   /// StartupRouter forces DisplayNameSetupScreen before any chat path is
   /// reachable — but defensive). Reading per-send is cheap (single SQLite
   /// lookup, microseconds) and stays fresh after rename.
-  Future<String?> _currentDisplayName() async {
+  Future<String?> currentDisplayName() async {
     final row = await profileDao.get();
     return row?.displayName;
   }
@@ -1611,7 +1611,7 @@ class _MessageServiceReceiptSender implements ReceiptSender {
   _MessageServiceReceiptSender(this._svc);
   final MessageService _svc;
   @override
-  Future<String?> currentDisplayName() => _svc._currentDisplayName();
+  Future<String?> currentDisplayName() => _svc.currentDisplayName();
   @override
   Future<void> encryptAndSend(String peer, List<int> envelopeBytes) =>
       _svc._encryptAndSend(peer, envelopeBytes);
