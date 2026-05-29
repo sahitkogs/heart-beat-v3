@@ -179,6 +179,27 @@ void main() {
       expect(await dao.findMessageById('nope'), isNull);
     });
 
+    test('insertMessage with duplicate id is idempotent (10.4.3c BG dedup)',
+        () async {
+      // Simulates BG handler arriving twice for the same logical message
+      // — second insert must NOT overwrite the first row, and exactly one
+      // row should exist. Relied on by background_message_handler's
+      // findMessageById gate as a defense-in-depth backstop.
+      final t = DateTime.now();
+      await dao.insertMessage(MessagesCompanion.insert(
+        id: 'dup-1', chatId: 'peerA', senderPubkeyHex: 'peerA',
+        body: 'first', lamport: 1, sentAt: t,
+      ));
+      await dao.insertMessage(MessagesCompanion.insert(
+        id: 'dup-1', chatId: 'peerA', senderPubkeyHex: 'peerA',
+        body: 'second', lamport: 99, sentAt: t,
+      ));
+      final row = await dao.findMessageById('dup-1');
+      expect(row, isNotNull);
+      expect(row!.body, 'first');         // original kept
+      expect(row.lamport, 1);             // original kept
+    });
+
     test('watchDeliveryState emits on change', () async {
       await dao.insertMessage(MessagesCompanion.insert(
         id: 'mW', chatId: 'peerA', senderPubkeyHex: 'me',

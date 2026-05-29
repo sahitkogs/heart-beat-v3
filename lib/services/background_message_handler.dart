@@ -286,12 +286,29 @@ Future<void> processFcmMessage(
       return;
     }
 
+    // 10.4.3c — dedup by inner.msgId (matches foreground _handleDeliver).
+    // FCM may deliver the same envelope more than once (Alice's outbox
+    // retransmits a stuck msg multiple times; each push lands here as a
+    // fresh decrypt with a NEW chain counter, so libsignal's own dedup
+    // doesn't catch them). Without this gate the user sees N notifications
+    // and N bubbles for the same logical message.
+    if (inner is TextEnvelope) {
+      final existing = await dao.findMessageById(inner.msgId);
+      if (existing != null && existing.senderPubkeyHex == senderPubkeyHex) {
+        _log('dedup_inbound msgId=${_short(inner.msgId)} '
+            'from=${_short(senderPubkeyHex)}');
+        return; // skip persist AND skip notification
+      }
+    }
+
     final body = inner.body;
     final now = DateTime.now();
     final lamport = await dao.observeLamport(inner.chatId, inner.lamport);
+    final messageId =
+        inner is TextEnvelope ? inner.msgId : _uuid.v4();
     await dao.insertMessage(
       MessagesCompanion.insert(
-        id: _uuid.v4(),
+        id: messageId,
         chatId: inner.chatId,
         senderPubkeyHex: senderPubkeyHex,
         body: body,
