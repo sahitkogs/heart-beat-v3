@@ -9,6 +9,7 @@ import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart'
 import 'package:uuid/uuid.dart';
 
 import '../chat/group_envelope.dart';
+import '../chat/outbox_retransmitter.dart';
 import '../chat/pre_key_bootstrap.dart';
 import '../core/hex_codec.dart';
 import '../data/app_database.dart';
@@ -16,8 +17,10 @@ import '../data/chats_dao.dart';
 import '../data/contacts_repository.dart';
 import '../data/group_members_dao.dart';
 import '../data/group_ops_log_dao.dart';
+import '../data/outbox_dao.dart';
 import '../data/peer_bundle_state_dao.dart';
 import '../firebase_options.dart';
+import '../relay/relay_client.dart';
 import '../util/display_name.dart';
 import 'key_storage.dart';
 import 'libsignal_crypto_service.dart';
@@ -26,6 +29,16 @@ import 'signing_service.dart';
 import 'wake_client.dart';
 
 const _uuid = Uuid();
+
+/// Relay WS the BG isolate dials when firing a delivered receipt. Must
+/// match the prod value in `lib/features/chat/message_service_provider.dart`.
+const _bgRelayWsUrl = 'ws://34.42.231.29:8080/v1/signal';
+
+/// Whole-operation timeout for the transient BG receipt send (connect +
+/// send). Sized well under Android's high-priority FCM ~30s budget so a
+/// hung dial falls through to the outbox-retry path instead of stranding
+/// the isolate.
+const _bgReceiptTimeout = Duration(seconds: 8);
 
 /// Top-level entry point Android invokes when the app is killed or
 /// backgrounded and an FCM data message arrives. MUST be a top-level
@@ -292,23 +305,19 @@ Future<void> processFcmMessage(
     // fresh decrypt with a NEW chain counter, so libsignal's own dedup
     // doesn't catch them). Without this gate the user sees N notifications
     // and N bubbles for the same logical message.
-    if (inner is TextEnvelope) {
-      final existing = await dao.findMessageById(inner.msgId);
-      if (existing != null && existing.senderPubkeyHex == senderPubkeyHex) {
-        _log('dedup_inbound msgId=${_short(inner.msgId)} '
-            'from=${_short(senderPubkeyHex)}');
-        return; // skip persist AND skip notification
-      }
+    final existing = await dao.findMessageById(inner.msgId);
+    if (existing != null && existing.senderPubkeyHex == senderPubkeyHex) {
+      _log('dedup_inbound msgId=${_short(inner.msgId)} '
+          'from=${_short(senderPubkeyHex)}');
+      return; // skip persist AND skip notification
     }
 
     final body = inner.body;
     final now = DateTime.now();
     final lamport = await dao.observeLamport(inner.chatId, inner.lamport);
-    final messageId =
-        inner is TextEnvelope ? inner.msgId : _uuid.v4();
     await dao.insertMessage(
       MessagesCompanion.insert(
-        id: messageId,
+        id: inner.msgId,
         chatId: inner.chatId,
         senderPubkeyHex: senderPubkeyHex,
         body: body,
@@ -336,6 +345,38 @@ Future<void> processFcmMessage(
     await dao.updateLastMessage(inner.chatId, preview, now);
     _log('persisted message from=${_short(senderPubkeyHex)} '
         'chat=${_short(inner.chatId)} kind=${chat.kind} bodyLen=${body.length}');
+
+    // 10.4.3c Fix C — fire delivered receipt back from this isolate so the
+    // sender's UI gets ✓✓ the moment the FCM push lands on this device
+    // (WhatsApp semantics: "delivered" == push arrived, not "user opened").
+    // Direct chats only — group delivery receipts are out of scope for v1.
+    // On any failure (relay dial timeout, encrypt error, etc.) fall through
+    // to the receipt outbox so the main isolate's retransmitter retries.
+    if (chat.kind == 'direct') {
+      try {
+        await _sendBackgroundDeliveredReceipt(
+          crypto: crypto,
+          signing: signing,
+          peerPubkeyHex: senderPubkeyHex,
+          innerMsgId: inner.msgId,
+        ).timeout(_bgReceiptTimeout);
+        _log('bg_delivered_sent peer=${_short(senderPubkeyHex)} '
+            'msgId=${_short(inner.msgId)}');
+      } catch (e) {
+        _log('bg_delivered_failed peer=${_short(senderPubkeyHex)} err=$e');
+        try {
+          await _persistReceiptForRetry(
+            db: db,
+            peerPubkeyHex: senderPubkeyHex,
+            innerMsgId: inner.msgId,
+          );
+          _log('bg_delivered_queued_for_retry peer=${_short(senderPubkeyHex)} '
+              'msgId=${_short(inner.msgId)}');
+        } catch (e2, st) {
+          _log('bg_delivered_outbox_insert_failed err=$e2\n$st');
+        }
+      }
+    }
 
     if (showNotification) {
       String title;
@@ -911,4 +952,71 @@ Future<void> _maybeUpdateClaimedName({
 void _log(String msg) {
   // ignore: avoid_print
   print('[BG] $msg');
+}
+
+/// 10.4.3c Fix C — dial a transient relay WS from the BG isolate, send
+/// a `delivered` receipt for [innerMsgId], close. The caller bounds the
+/// whole operation with `_bgReceiptTimeout` (8s) so a hung connect
+/// doesn't burn Android's high-priority FCM time budget.
+///
+/// Throws on any failure (timeout, encrypt error, WS reject, relay
+/// disconnect). Caller catches and falls through to
+/// [_persistReceiptForRetry] so the main isolate's OutboxRetransmitter
+/// picks up the receipt on its next sweep.
+Future<void> _sendBackgroundDeliveredReceipt({
+  required LibsignalCryptoService crypto,
+  required SigningService signing,
+  required String peerPubkeyHex,
+  required String innerMsgId,
+}) async {
+  final receiptInner = InnerEnvelope.buildDeliveryReceipt(
+    chatId: peerPubkeyHex,
+    msgIds: [innerMsgId],
+    kind: ReceiptKind.delivered,
+    at: DateTime.now(),
+    senderDisplayName: null,
+  );
+  final ciphertext = await crypto.encrypt(
+    peerPubkeyHex: peerPubkeyHex,
+    plaintext: receiptInner,
+  );
+  final wireBytes = EnvelopeWire.wrapMessage(ciphertext);
+  final client = RelayClient(
+    relayWsUrl: Uri.parse(_bgRelayWsUrl),
+    signing: signing,
+  );
+  try {
+    await client.connect();
+    await client.send(toPubkeyHex: peerPubkeyHex, envelope: wireBytes);
+  } finally {
+    await client.dispose();
+  }
+}
+
+/// Fallback when [_sendBackgroundDeliveredReceipt] fails: persist the
+/// receipt envelope to the outbox (kind='receipt') keyed by a synthetic
+/// uuid id. The main isolate's [OutboxRetransmitter] sweeps it with the
+/// 5s/10s/30s/5m ladder once it next boots and connects to the relay.
+Future<void> _persistReceiptForRetry({
+  required AppDatabase db,
+  required String peerPubkeyHex,
+  required String innerMsgId,
+}) async {
+  final outboxDao = OutboxDao(db);
+  final receiptBytes = InnerEnvelope.buildDeliveryReceipt(
+    chatId: peerPubkeyHex,
+    msgIds: [innerMsgId],
+    kind: ReceiptKind.delivered,
+    at: DateTime.now(),
+    senderDisplayName: null,
+  );
+  final now = DateTime.now();
+  await outboxDao.insert(
+    msgId: _uuid.v4(),
+    peerPubkeyHex: peerPubkeyHex,
+    envelopeBytes: receiptBytes,
+    createdAt: now,
+    nextRetryAt: OutboxRetransmitter.nextReceiptRetryAt(attempt: 1, now: now),
+    kind: 'receipt',
+  );
 }
