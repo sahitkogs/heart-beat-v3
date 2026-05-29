@@ -3120,6 +3120,16 @@ class $OutboxTable extends Outbox with TableInfo<$OutboxTable, OutboxData> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('text'),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     msgId,
@@ -3128,6 +3138,7 @@ class $OutboxTable extends Outbox with TableInfo<$OutboxTable, OutboxData> {
     attempt,
     nextRetryAt,
     createdAt,
+    kind,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3196,6 +3207,12 @@ class $OutboxTable extends Outbox with TableInfo<$OutboxTable, OutboxData> {
     } else if (isInserting) {
       context.missing(_createdAtMeta);
     }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    }
     return context;
   }
 
@@ -3229,6 +3246,10 @@ class $OutboxTable extends Outbox with TableInfo<$OutboxTable, OutboxData> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
     );
   }
 
@@ -3245,6 +3266,7 @@ class OutboxData extends DataClass implements Insertable<OutboxData> {
   final int attempt;
   final DateTime nextRetryAt;
   final DateTime createdAt;
+  final String kind;
   const OutboxData({
     required this.msgId,
     required this.peerPubkeyHex,
@@ -3252,6 +3274,7 @@ class OutboxData extends DataClass implements Insertable<OutboxData> {
     required this.attempt,
     required this.nextRetryAt,
     required this.createdAt,
+    required this.kind,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3262,6 +3285,7 @@ class OutboxData extends DataClass implements Insertable<OutboxData> {
     map['attempt'] = Variable<int>(attempt);
     map['next_retry_at'] = Variable<DateTime>(nextRetryAt);
     map['created_at'] = Variable<DateTime>(createdAt);
+    map['kind'] = Variable<String>(kind);
     return map;
   }
 
@@ -3273,6 +3297,7 @@ class OutboxData extends DataClass implements Insertable<OutboxData> {
       attempt: Value(attempt),
       nextRetryAt: Value(nextRetryAt),
       createdAt: Value(createdAt),
+      kind: Value(kind),
     );
   }
 
@@ -3288,6 +3313,7 @@ class OutboxData extends DataClass implements Insertable<OutboxData> {
       attempt: serializer.fromJson<int>(json['attempt']),
       nextRetryAt: serializer.fromJson<DateTime>(json['nextRetryAt']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      kind: serializer.fromJson<String>(json['kind']),
     );
   }
   @override
@@ -3300,6 +3326,7 @@ class OutboxData extends DataClass implements Insertable<OutboxData> {
       'attempt': serializer.toJson<int>(attempt),
       'nextRetryAt': serializer.toJson<DateTime>(nextRetryAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'kind': serializer.toJson<String>(kind),
     };
   }
 
@@ -3310,6 +3337,7 @@ class OutboxData extends DataClass implements Insertable<OutboxData> {
     int? attempt,
     DateTime? nextRetryAt,
     DateTime? createdAt,
+    String? kind,
   }) => OutboxData(
     msgId: msgId ?? this.msgId,
     peerPubkeyHex: peerPubkeyHex ?? this.peerPubkeyHex,
@@ -3317,6 +3345,7 @@ class OutboxData extends DataClass implements Insertable<OutboxData> {
     attempt: attempt ?? this.attempt,
     nextRetryAt: nextRetryAt ?? this.nextRetryAt,
     createdAt: createdAt ?? this.createdAt,
+    kind: kind ?? this.kind,
   );
   OutboxData copyWithCompanion(OutboxCompanion data) {
     return OutboxData(
@@ -3332,6 +3361,7 @@ class OutboxData extends DataClass implements Insertable<OutboxData> {
           ? data.nextRetryAt.value
           : this.nextRetryAt,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      kind: data.kind.present ? data.kind.value : this.kind,
     );
   }
 
@@ -3343,7 +3373,8 @@ class OutboxData extends DataClass implements Insertable<OutboxData> {
           ..write('envelopeBytes: $envelopeBytes, ')
           ..write('attempt: $attempt, ')
           ..write('nextRetryAt: $nextRetryAt, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('kind: $kind')
           ..write(')'))
         .toString();
   }
@@ -3356,6 +3387,7 @@ class OutboxData extends DataClass implements Insertable<OutboxData> {
     attempt,
     nextRetryAt,
     createdAt,
+    kind,
   );
   @override
   bool operator ==(Object other) =>
@@ -3366,7 +3398,8 @@ class OutboxData extends DataClass implements Insertable<OutboxData> {
           $driftBlobEquality.equals(other.envelopeBytes, this.envelopeBytes) &&
           other.attempt == this.attempt &&
           other.nextRetryAt == this.nextRetryAt &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.kind == this.kind);
 }
 
 class OutboxCompanion extends UpdateCompanion<OutboxData> {
@@ -3376,6 +3409,7 @@ class OutboxCompanion extends UpdateCompanion<OutboxData> {
   final Value<int> attempt;
   final Value<DateTime> nextRetryAt;
   final Value<DateTime> createdAt;
+  final Value<String> kind;
   final Value<int> rowid;
   const OutboxCompanion({
     this.msgId = const Value.absent(),
@@ -3384,6 +3418,7 @@ class OutboxCompanion extends UpdateCompanion<OutboxData> {
     this.attempt = const Value.absent(),
     this.nextRetryAt = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.kind = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   OutboxCompanion.insert({
@@ -3393,6 +3428,7 @@ class OutboxCompanion extends UpdateCompanion<OutboxData> {
     this.attempt = const Value.absent(),
     required DateTime nextRetryAt,
     required DateTime createdAt,
+    this.kind = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : msgId = Value(msgId),
        peerPubkeyHex = Value(peerPubkeyHex),
@@ -3406,6 +3442,7 @@ class OutboxCompanion extends UpdateCompanion<OutboxData> {
     Expression<int>? attempt,
     Expression<DateTime>? nextRetryAt,
     Expression<DateTime>? createdAt,
+    Expression<String>? kind,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -3415,6 +3452,7 @@ class OutboxCompanion extends UpdateCompanion<OutboxData> {
       if (attempt != null) 'attempt': attempt,
       if (nextRetryAt != null) 'next_retry_at': nextRetryAt,
       if (createdAt != null) 'created_at': createdAt,
+      if (kind != null) 'kind': kind,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -3426,6 +3464,7 @@ class OutboxCompanion extends UpdateCompanion<OutboxData> {
     Value<int>? attempt,
     Value<DateTime>? nextRetryAt,
     Value<DateTime>? createdAt,
+    Value<String>? kind,
     Value<int>? rowid,
   }) {
     return OutboxCompanion(
@@ -3435,6 +3474,7 @@ class OutboxCompanion extends UpdateCompanion<OutboxData> {
       attempt: attempt ?? this.attempt,
       nextRetryAt: nextRetryAt ?? this.nextRetryAt,
       createdAt: createdAt ?? this.createdAt,
+      kind: kind ?? this.kind,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -3460,6 +3500,9 @@ class OutboxCompanion extends UpdateCompanion<OutboxData> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -3475,6 +3518,7 @@ class OutboxCompanion extends UpdateCompanion<OutboxData> {
           ..write('attempt: $attempt, ')
           ..write('nextRetryAt: $nextRetryAt, ')
           ..write('createdAt: $createdAt, ')
+          ..write('kind: $kind, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -6582,6 +6626,7 @@ typedef $$OutboxTableCreateCompanionBuilder =
       Value<int> attempt,
       required DateTime nextRetryAt,
       required DateTime createdAt,
+      Value<String> kind,
       Value<int> rowid,
     });
 typedef $$OutboxTableUpdateCompanionBuilder =
@@ -6592,6 +6637,7 @@ typedef $$OutboxTableUpdateCompanionBuilder =
       Value<int> attempt,
       Value<DateTime> nextRetryAt,
       Value<DateTime> createdAt,
+      Value<String> kind,
       Value<int> rowid,
     });
 
@@ -6631,6 +6677,11 @@ class $$OutboxTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -6673,6 +6724,11 @@ class $$OutboxTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$OutboxTableAnnotationComposer
@@ -6707,6 +6763,9 @@ class $$OutboxTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
 }
 
 class $$OutboxTableTableManager
@@ -6743,6 +6802,7 @@ class $$OutboxTableTableManager
                 Value<int> attempt = const Value.absent(),
                 Value<DateTime> nextRetryAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String> kind = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => OutboxCompanion(
                 msgId: msgId,
@@ -6751,6 +6811,7 @@ class $$OutboxTableTableManager
                 attempt: attempt,
                 nextRetryAt: nextRetryAt,
                 createdAt: createdAt,
+                kind: kind,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -6761,6 +6822,7 @@ class $$OutboxTableTableManager
                 Value<int> attempt = const Value.absent(),
                 required DateTime nextRetryAt,
                 required DateTime createdAt,
+                Value<String> kind = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => OutboxCompanion.insert(
                 msgId: msgId,
@@ -6769,6 +6831,7 @@ class $$OutboxTableTableManager
                 attempt: attempt,
                 nextRetryAt: nextRetryAt,
                 createdAt: createdAt,
+                kind: kind,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

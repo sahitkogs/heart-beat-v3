@@ -13,6 +13,7 @@ class OutboxDao extends DatabaseAccessor<AppDatabase> with _$OutboxDaoMixin {
     required List<int> envelopeBytes,
     required DateTime createdAt,
     required DateTime nextRetryAt,
+    String kind = 'text',
   }) async {
     await into(outbox).insertOnConflictUpdate(
       OutboxCompanion.insert(
@@ -21,6 +22,7 @@ class OutboxDao extends DatabaseAccessor<AppDatabase> with _$OutboxDaoMixin {
         envelopeBytes: Uint8List.fromList(envelopeBytes),
         createdAt: createdAt,
         nextRetryAt: nextRetryAt,
+        kind: Value(kind),
       ),
     );
   }

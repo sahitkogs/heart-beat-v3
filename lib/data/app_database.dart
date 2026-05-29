@@ -181,17 +181,27 @@ class PeerBundleState extends Table {
   Set<Column> get primaryKey => {peerPubkeyHex};
 }
 
-/// Unacked outbound messages. Row inserted by `MessageService.sendText`
-/// before `_encryptAndSend`. Row deleted when a `delivery_receipt` envelope
-/// arrives for `msgId`. Periodic retransmitter sweeps rows whose
-/// `nextRetryAt` is in the past. `attempt` drives the backoff ladder.
+/// Unacked outbound messages AND outbound receipts pending retry. For text
+/// rows (kind=='text'), inserted by `MessageService.sendText` before
+/// `_encryptAndSend`; deleted when a `delivery_receipt` arrives for `msgId`.
+/// For receipt rows (kind=='receipt'), inserted by `DeliveryReceiptDebouncer`
+/// before its own send; deleted as soon as the send succeeds (receipts are
+/// not themselves acked). Periodic retransmitter sweeps rows whose
+/// `nextRetryAt` is in the past. `attempt` drives the backoff ladder, with
+/// separate ladders per kind (text: 30s/60s/5m/30m/1h; receipt: 5s/10s/30s/5m).
 class Outbox extends Table {
-  TextColumn get msgId => text()();                    // UUIDv4, also messages.id
+  // For kind=='text' this is the message UUID (also messages.id). For
+  // kind=='receipt' this is a synthetic id 'receipt:<innerMsgId>:<kindStr>'
+  // — keeps the PK unique even when both a text row and its receipt row
+  // exist for the same logical message.
+  TextColumn get msgId => text()();
   TextColumn get peerPubkeyHex => text()();
   BlobColumn get envelopeBytes => blob()();            // pre-encrypted JSON inner envelope
   IntColumn get attempt => integer().withDefault(const Constant(0))();
   DateTimeColumn get nextRetryAt => dateTime()();
   DateTimeColumn get createdAt => dateTime()();
+  TextColumn get kind =>
+      text().withDefault(const Constant('text'))();    // 'text' | 'receipt'
 
   @override
   Set<Column> get primaryKey => {msgId};
@@ -220,7 +230,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -311,6 +321,11 @@ class AppDatabase extends _$AppDatabase {
               // chat UI hides the tick when known_ticks is false rather
               // than showing a misleading single check.
               await m.addColumn(messages, messages.knownTicks);
+            } else if (v == 8) {
+              // 10.4.3c — additive: outbox.kind for receipt-outbox rows.
+              // Existing outbox rows default to 'text', preserving 10.4.3b
+              // semantics for any in-flight message at upgrade time.
+              await m.addColumn(outbox, outbox.kind);
             }
           }
         },
