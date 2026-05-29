@@ -122,4 +122,102 @@ void main() {
     expect(row!.attempt, 1);
     expect(row.nextRetryAt.isAfter(t), isTrue);
   });
+
+  group('10.4.3c — receipt rows', () {
+    Future<String> seedReceipt({
+      required DateTime createdAt,
+      required DateTime nextRetryAt,
+      String peer = 'peerA',
+    }) async {
+      final id = 'receipt-${createdAt.microsecondsSinceEpoch}';
+      await outbox.insert(
+        msgId: id,
+        peerPubkeyHex: peer,
+        envelopeBytes: const [9, 9, 9],
+        createdAt: createdAt,
+        nextRetryAt: nextRetryAt,
+        kind: 'receipt',
+      );
+      return id;
+    }
+
+    test('successful send deletes the receipt row (no waiting for ack)',
+        () async {
+      final t = DateTime.now();
+      final id = await seedReceipt(
+        createdAt: t,
+        nextRetryAt: t.subtract(const Duration(seconds: 1)),
+      );
+      await rx.sweepOnceForTest(now: t);
+      expect(sender.calls, hasLength(1));
+      expect(await outbox.findByMsgId(id), isNull);
+    });
+
+    test('failed send leaves the receipt row + bumps attempt via 5/10/30/5m',
+        () async {
+      final t = DateTime.now();
+      final id = await seedReceipt(
+        createdAt: t,
+        nextRetryAt: t.subtract(const Duration(seconds: 1)),
+      );
+      sender.fail = true;
+      await rx.sweepOnceForTest(now: t);
+      final row = await outbox.findByMsgId(id);
+      expect(row, isNotNull);
+      expect(row!.attempt, 1);
+      // First retry slot is 5s after now (matches nextReceiptRetryAt(1)).
+      expect(row.nextRetryAt, t.add(const Duration(seconds: 5)));
+    });
+
+    test('receipt ladder picks 5s / 10s / 30s / 5m then sticks at 5m', () {
+      final t = DateTime(2026, 5, 26, 12, 0, 0);
+      expect(OutboxRetransmitter.nextReceiptRetryAt(attempt: 1, now: t),
+          t.add(const Duration(seconds: 5)));
+      expect(OutboxRetransmitter.nextReceiptRetryAt(attempt: 2, now: t),
+          t.add(const Duration(seconds: 10)));
+      expect(OutboxRetransmitter.nextReceiptRetryAt(attempt: 3, now: t),
+          t.add(const Duration(seconds: 30)));
+      expect(OutboxRetransmitter.nextReceiptRetryAt(attempt: 4, now: t),
+          t.add(const Duration(minutes: 5)));
+      expect(OutboxRetransmitter.nextReceiptRetryAt(attempt: 99, now: t),
+          t.add(const Duration(minutes: 5)));
+    });
+
+    test('24h expiry silently drops receipt — no chats.updateDeliveryState',
+        () async {
+      // A receipt isn't tied to a specific outbound message row on this
+      // device, so the existing 24h text path (mark messages.deliveryState
+      // = failed) is wrong. Receipt rows just disappear.
+      final t = DateTime.now();
+      final id = await seedReceipt(
+        createdAt: t.subtract(const Duration(hours: 25)),
+        nextRetryAt: t.subtract(const Duration(seconds: 1)),
+      );
+      await rx.sweepOnceForTest(now: t);
+      expect(await outbox.findByMsgId(id), isNull);
+      // The receipt's synthetic id is not a real messages.id, so updating
+      // its delivery_state would be a no-op AT BEST — but more importantly
+      // would be conceptually wrong. Assert nothing exploded.
+      expect(sender.calls, isEmpty); // expired before any send
+    });
+
+    test('mixed text+receipt rows: each follows its own ladder', () async {
+      final t = DateTime.now();
+      final textId = await seed(
+        createdAt: t,
+        nextRetryAt: t.subtract(const Duration(seconds: 1)),
+      );
+      final receiptId = await seedReceipt(
+        createdAt: t,
+        nextRetryAt: t.subtract(const Duration(seconds: 1)),
+      );
+      sender.fail = true;
+      await rx.sweepOnceForTest(now: t);
+      final textRow = await outbox.findByMsgId(textId);
+      final receiptRow = await outbox.findByMsgId(receiptId);
+      // Text uses 30s ladder slot, receipt uses 5s.
+      expect(textRow!.nextRetryAt, t.add(const Duration(seconds: 30)));
+      expect(receiptRow!.nextRetryAt, t.add(const Duration(seconds: 5)));
+    });
+  });
 }

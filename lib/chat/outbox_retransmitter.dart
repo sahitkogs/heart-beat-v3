@@ -76,28 +76,51 @@ class OutboxRetransmitter {
   Future<void> _sweepAt(DateTime now) async {
     final due = await outbox.dueBefore(now);
     for (final row in due) {
-      // 24h expiry — drop the row, mark the message failed, surface in UI.
+      final isReceipt = row.kind == 'receipt';
+
+      // 24h expiry. For text rows we mark the underlying messages row
+      // failed so the UI can surface a retry tick. Receipt rows have no
+      // corresponding messages row of their own (the synthetic id is just
+      // a retry token), so they just disappear.
       if (now.difference(row.createdAt) > maxAge) {
-        await chats.updateDeliveryState(row.msgId, DeliveryState.failed);
+        if (!isReceipt) {
+          await chats.updateDeliveryState(row.msgId, DeliveryState.failed);
+        }
         await outbox.deleteByMsgId(row.msgId);
         // ignore: avoid_print
-        print('[OR] expired msgId=${row.msgId} attempt=${row.attempt}');
+        print('[OR] expired kind=${row.kind} msgId=${row.msgId} '
+            'attempt=${row.attempt}');
         continue;
       }
+
+      var sent = false;
       try {
         await sender.sendOnce(row.peerPubkeyHex, row.envelopeBytes);
+        sent = true;
         // ignore: avoid_print
-        print('[OR] retransmit msgId=${row.msgId} attempt=${row.attempt + 1}');
+        print('[OR] retransmit kind=${row.kind} msgId=${row.msgId} '
+            'attempt=${row.attempt + 1}');
       } catch (e) {
         // ignore: avoid_print
-        print('[OR] retransmit_fail msgId=${row.msgId} err=$e');
+        print('[OR] retransmit_fail kind=${row.kind} '
+            'msgId=${row.msgId} err=$e');
       }
-      // Whether send succeeded or threw, bump attempt + nextRetryAt. The
-      // receipt path is what deletes the row on success; without a receipt
-      // we keep retrying with backoff.
+
+      if (isReceipt && sent) {
+        // Receipts have no remote ack — successful send IS the terminal
+        // state. Drop the row so we don't keep firing duplicates.
+        await outbox.deleteByMsgId(row.msgId);
+        continue;
+      }
+
+      // Both kinds: on send failure, bump attempt + reschedule per the
+      // kind's ladder. Text rows that DID send still bump too — they wait
+      // for an inbound delivery_receipt to drop the row.
       final newAttempt = row.attempt + 1;
-      await outbox.bumpAttempt(
-          row.msgId, nextRetryAt(attempt: newAttempt, now: now));
+      final next = isReceipt
+          ? nextReceiptRetryAt(attempt: newAttempt, now: now)
+          : nextRetryAt(attempt: newAttempt, now: now);
+      await outbox.bumpAttempt(row.msgId, next);
     }
   }
 }
