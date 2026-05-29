@@ -44,6 +44,20 @@ class OutboxRetransmitter {
     return now.add(ladder[idx]);
   }
 
+  /// 10.4.3c — receipt rows use a tighter ladder than text since they're
+  /// cheap to re-send and a slow tick read poorly. 5s / 10s / 30s / 5m / 5m…
+  static DateTime nextReceiptRetryAt(
+      {required int attempt, required DateTime now}) {
+    const ladder = <Duration>[
+      Duration(seconds: 5),
+      Duration(seconds: 10),
+      Duration(seconds: 30),
+      Duration(minutes: 5),
+    ];
+    final idx = (attempt - 1).clamp(0, ladder.length - 1);
+    return now.add(ladder[idx]);
+  }
+
   void start() {
     _sweepTimer ??= Timer.periodic(sweepInterval, (_) => _sweep());
   }

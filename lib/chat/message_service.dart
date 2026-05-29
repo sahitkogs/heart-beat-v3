@@ -1600,8 +1600,10 @@ class MessageService {
   /// Called by messageServiceProvider in production; tests that need the
   /// real (non-stub) helpers can also opt in.
   void attachLayerB() {
-    receiptDebouncer =
-        DeliveryReceiptDebouncer(_MessageServiceReceiptSender(this));
+    receiptDebouncer = DeliveryReceiptDebouncer(
+      _MessageServiceReceiptSender(this),
+      outbox: outboxDao,
+    );
     _retransmitter = OutboxRetransmitter(
       outbox: outboxDao,
       chats: dao,
