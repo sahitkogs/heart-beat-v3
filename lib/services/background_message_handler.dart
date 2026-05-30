@@ -34,11 +34,12 @@ const _uuid = Uuid();
 /// match the prod value in `lib/features/chat/message_service_provider.dart`.
 const _bgRelayWsUrl = 'ws://34.42.231.29:8080/v1/signal';
 
-/// Whole-operation timeout for the transient BG receipt send (connect +
-/// send). Sized well under Android's high-priority FCM ~30s budget so a
-/// hung dial falls through to the outbox-retry path instead of stranding
-/// the isolate.
-const _bgReceiptTimeout = Duration(seconds: 8);
+/// Whole-operation timeout for the transient BG receipt send (libsignal
+/// encrypt + signing init + WS connect + send). On cold-start the libsignal
+/// session load and the signing service boot dominate; 20s comfortably
+/// covers them while staying under Android's high-priority FCM ~30s
+/// budget. A hung dial still falls through to the outbox-retry path.
+const _bgReceiptTimeout = Duration(seconds: 20);
 
 /// Top-level entry point Android invokes when the app is killed or
 /// backgrounded and an FCM data message arrives. MUST be a top-level

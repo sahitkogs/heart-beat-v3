@@ -124,7 +124,7 @@ class _TickIcon extends StatelessWidget {
       case DeliveryState.delivered:
         return Icon(Icons.done_all, size: 12, color: muted);
       case DeliveryState.read:
-        return const Icon(Icons.done_all, size: 12, color: AppColors.accent);
+        return const Icon(Icons.done_all, size: 12, color: AppColors.tickRead);
       case DeliveryState.failed:
         return GestureDetector(
           onTap: onRetryTap,
