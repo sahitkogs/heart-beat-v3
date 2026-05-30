@@ -232,15 +232,24 @@ class _ChatTile extends ConsumerWidget {
 
     return ListTile(
       leading: InitialAvatar(label: name),
+      // 10.4.3d UI — title/subtitle bumped to match the chat-thread body
+      // (+30% on both). Default ListTile is title 16 / subtitle 14.
       title: Text(
         name,
-        style: isLeft ? TextStyle(color: dimmed) : null,
+        style: TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          color: isLeft ? dimmed : null,
+        ),
       ),
       subtitle: Text(
         preview,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: isLeft ? TextStyle(color: dimmed) : null,
+        style: TextStyle(
+          fontSize: 16,
+          color: isLeft ? dimmed : null,
+        ),
       ),
       trailing: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -284,8 +293,17 @@ class _ChatTile extends ConsumerWidget {
         : '';
     return ListTile(
       leading: InitialAvatar(label: title),
-      title: Text(title),
-      subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+      // 10.4.3d UI — same +30% bump as group tiles.
+      title: Text(
+        title,
+        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+      ),
+      subtitle: Text(
+        subtitle,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 16),
+      ),
       trailing: Text(trailing, style: Theme.of(context).textTheme.bodySmall),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
