@@ -101,11 +101,15 @@ jobs:
           packageName: com.sahitkogs.heartbeat
           releaseFiles: build/app/outputs/bundle/release/app-release.aab
           track: ${{ inputs.track || 'internal' }}
-          status: draft
+          status: completed
           releaseName: ${{ github.ref_name }}
+          # status: completed → auto-rollout to 100% of the selected track
+          # (Internal by default), so opted-in testers see the new build
+          # immediately. Switch back to `draft` if you ever want to stage
+          # release notes in the Play Console before rollout.
           # The action's mappingFile + whatsNewDirectory inputs are
           # intentionally omitted — release notes can be edited in the
-          # Play Console review step before promoting from draft.
+          # Play Console after rollout.
 
       - name: Clean up secrets
         if: always()
