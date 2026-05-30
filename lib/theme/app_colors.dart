@@ -25,11 +25,6 @@ class AppColors {
   static const accentDeep = Color(0xFF8F4530);
   static const green = Color(0xFF6B7F5A);
 
-  // Read-tick blue (10.4.3c) — contrasts the rust outbound bubble so the
-  // WhatsApp-style "they read it" tick is actually visible. Pre-10.4.3c we
-  // used `accent`, which matched the bubble and rendered the tick invisible.
-  static const tickRead = Color(0xFF6FB4D8);
-
   // Rules / strokes (light)
   static const rule = Color(0xFFD8CCB6);
   static const ctaInk = Color(0xFF1B1612);

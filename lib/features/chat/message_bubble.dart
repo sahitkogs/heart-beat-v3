@@ -36,10 +36,16 @@ class MessageBubble extends StatelessWidget {
     final bubbleBg = fromMe
         ? AppColors.accent
         : (isDark ? AppColors.surfaceDark : AppColors.paperShade);
+    // 10.4.3d UI — pure white on the rust outbound bubble for ~6:1 contrast
+    // (the prior `paper` cream tone shared the bubble's warm hue and read
+    // as muddy, especially at the larger body size).
     final bubbleFg = fromMe
-        ? AppColors.paper
+        ? Colors.white
         : (isDark ? AppColors.inkOnDark : AppColors.ink);
     final mutedFg = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
+    // Footer color (timestamp + status label) — semi-transparent over the
+    // bubble fg so it sits visibly but doesn't fight the body text.
+    final footerFg = bubbleFg.withValues(alpha: 0.75);
     return Align(
       alignment: fromMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Padding(
@@ -79,24 +85,34 @@ class MessageBubble extends StatelessWidget {
                     style: TextStyle(
                       fontFamily: 'serif',
                       color: bubbleFg,
+                      // 10.4.3d UI — body bumped from 14 (default) → 18,
+                      // matching the WhatsApp comfort point. Timestamp +
+                      // status label stay small so the bubble doesn't
+                      // become bottom-heavy.
+                      fontSize: 18,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    _hhmm(timestamp.toLocal()),
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: bubbleFg.withValues(alpha: 0.7),
-                    ),
-                  ),
-                  if (fromMe && deliveryState != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: _TickIcon(
-                        state: deliveryState!,
-                        onRetryTap: onRetryTap,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _hhmm(timestamp.toLocal()),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: footerFg,
+                        ),
                       ),
-                    ),
+                      if (fromMe && deliveryState != null) ...[
+                        const SizedBox(width: 6),
+                        _StatusLabel(
+                          state: deliveryState!,
+                          color: footerFg,
+                          onRetryTap: onRetryTap,
+                        ),
+                      ],
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -110,30 +126,37 @@ class MessageBubble extends StatelessWidget {
       '${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}';
 }
 
-class _TickIcon extends StatelessWidget {
-  const _TickIcon({required this.state, this.onRetryTap});
+class _StatusLabel extends StatelessWidget {
+  const _StatusLabel({
+    required this.state,
+    required this.color,
+    this.onRetryTap,
+  });
   final DeliveryState state;
+  final Color color;
   final VoidCallback? onRetryTap;
 
   @override
   Widget build(BuildContext context) {
-    final muted = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6);
-    switch (state) {
-      case DeliveryState.sent:
-        return Icon(Icons.check, size: 12, color: muted);
-      case DeliveryState.delivered:
-        return Icon(Icons.done_all, size: 12, color: muted);
-      case DeliveryState.read:
-        return const Icon(Icons.done_all, size: 12, color: AppColors.tickRead);
-      case DeliveryState.failed:
-        return GestureDetector(
-          onTap: onRetryTap,
-          child: Tooltip(
-            message: 'Tap to retry',
-            child: Icon(Icons.error_outline,
-                size: 12, color: Theme.of(context).colorScheme.error),
-          ),
-        );
+    final label = switch (state) {
+      DeliveryState.sent => 'sent',
+      DeliveryState.delivered => 'delivered',
+      DeliveryState.read => 'read',
+      DeliveryState.failed => 'failed — tap to retry',
+    };
+    final text = Text(
+      label,
+      style: TextStyle(
+        fontSize: 11,
+        color: state == DeliveryState.failed
+            ? Theme.of(context).colorScheme.error
+            : color,
+        fontStyle: FontStyle.italic,
+      ),
+    );
+    if (state == DeliveryState.failed) {
+      return GestureDetector(onTap: onRetryTap, child: text);
     }
+    return text;
   }
 }

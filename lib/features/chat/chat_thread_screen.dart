@@ -158,12 +158,24 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen>
 
     return Scaffold(
       appBar: AppBar(
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 8),
-          child: Center(child: InitialAvatar(label: avatarLabel, size: 32)),
+        // 10.4.3d UI — explicit back button (was missing on this screen
+        // and users had to rely on the system gesture). Avatar moves into
+        // the title row alongside the name.
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).maybePop(),
+          tooltip: 'Back',
         ),
         leadingWidth: 48,
-        title: titleWidget,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            InitialAvatar(label: avatarLabel, size: 32),
+            const SizedBox(width: 12),
+            Flexible(child: titleWidget),
+          ],
+        ),
+        titleSpacing: 0,
         centerTitle: false,
       ),
       body: Column(
@@ -191,64 +203,80 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen>
                     final m = msgs[i];
                     final prev = i > 0 ? msgs[i - 1] : null;
 
+                    // 10.4.3d UI — date divider when the calendar day flips
+                    // between the previous message and this one (or on
+                    // the very first row). Format mirrors WhatsApp:
+                    // Today / Yesterday / weekday for this week / full
+                    // date for older.
+                    final dateDivider =
+                        _showDateDivider(m, prev) ? _dateRow(m.sentAt) : null;
+
+                    Widget body;
                     // System messages: centered italic gray row, no bubble.
                     if (m.kind != 'text') {
-                      return _systemRow(m.body);
-                    }
+                      body = _systemRow(m.body);
+                    } else {
+                      final fromMe = m.senderPubkeyHex == me;
+                      final label = isGroup
+                          ? _showSenderLabel(m, prev, me, chat, contactsByPk)
+                          : null;
 
-                    final fromMe = m.senderPubkeyHex == me;
-                    final label = isGroup
-                        ? _showSenderLabel(m, prev, me, chat, contactsByPk)
-                        : null;
-
-                    // Inbound bubbles don't render a tick — render plain.
-                    if (!fromMe) {
-                      return MessageBubble(
-                        body: m.body,
-                        fromMe: false,
-                        timestamp: m.sentAt,
-                        senderLabel: label,
-                      );
-                    }
-                    // Outbound but pre-1.0.5 row — no provable delivery
-                    // state ever existed, so hide the tick entirely
-                    // instead of showing a misleading default `sent`.
-                    if (!m.knownTicks) {
-                      return MessageBubble(
-                        body: m.body,
-                        fromMe: true,
-                        timestamp: m.sentAt,
-                        senderLabel: label,
-                      );
-                    }
-                    // Outbound + known ticks: subscribe to delivery state
-                    // so the tick re-renders when a receipt advances it.
-                    final svc = messageSvcAsync.valueOrNull;
-                    if (svc == null) {
-                      return MessageBubble(
-                        body: m.body,
-                        fromMe: true,
-                        timestamp: m.sentAt,
-                        senderLabel: label,
-                        deliveryState: m.deliveryState,
-                      );
-                    }
-                    return StreamBuilder<DeliveryState>(
-                      stream: svc.dao.watchDeliveryState(m.id),
-                      initialData: m.deliveryState,
-                      builder: (context, snap) {
-                        final state = snap.data ?? DeliveryState.sent;
-                        return MessageBubble(
+                      // Inbound bubbles don't render a tick — render plain.
+                      if (!fromMe) {
+                        body = MessageBubble(
+                          body: m.body,
+                          fromMe: false,
+                          timestamp: m.sentAt,
+                          senderLabel: label,
+                        );
+                      } else if (!m.knownTicks) {
+                        // Outbound but pre-1.0.5 row — no provable delivery
+                        // state ever existed, so hide the tick entirely
+                        // instead of showing a misleading default `sent`.
+                        body = MessageBubble(
                           body: m.body,
                           fromMe: true,
                           timestamp: m.sentAt,
                           senderLabel: label,
-                          deliveryState: state,
-                          onRetryTap: state == DeliveryState.failed
-                              ? () => _retrySend(m.id)
-                              : null,
                         );
-                      },
+                      } else {
+                        // Outbound + known ticks: subscribe to delivery
+                        // state so the tick re-renders when a receipt
+                        // advances it.
+                        final svc = messageSvcAsync.valueOrNull;
+                        if (svc == null) {
+                          body = MessageBubble(
+                            body: m.body,
+                            fromMe: true,
+                            timestamp: m.sentAt,
+                            senderLabel: label,
+                            deliveryState: m.deliveryState,
+                          );
+                        } else {
+                          body = StreamBuilder<DeliveryState>(
+                            stream: svc.dao.watchDeliveryState(m.id),
+                            initialData: m.deliveryState,
+                            builder: (context, snap) {
+                              final state = snap.data ?? DeliveryState.sent;
+                              return MessageBubble(
+                                body: m.body,
+                                fromMe: true,
+                                timestamp: m.sentAt,
+                                senderLabel: label,
+                                deliveryState: state,
+                                onRetryTap: state == DeliveryState.failed
+                                    ? () => _retrySend(m.id)
+                                    : null,
+                              );
+                            },
+                          );
+                        }
+                      }
+                    }
+
+                    if (dateDivider == null) return body;
+                    return Column(
+                      children: [dateDivider, body],
                     );
                   },
                 );
@@ -396,6 +424,70 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen>
           ),
         ),
       );
+
+  // 10.4.3d UI — date dividers. Show a divider before message [m] when
+  // the calendar day differs from [prev] (or [prev] is null — first row).
+  // Group system-message kinds count the same as text for grouping purposes.
+  bool _showDateDivider(Message m, Message? prev) {
+    if (prev == null) return true;
+    final a = m.sentAt.toLocal();
+    final b = prev.sentAt.toLocal();
+    return a.year != b.year || a.month != b.month || a.day != b.day;
+  }
+
+  Widget _dateRow(DateTime at) => Builder(
+        builder: (ctx) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+          child: Center(
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
+              decoration: BoxDecoration(
+                color: Theme.of(ctx)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                _formatDateDivider(at.toLocal()),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(ctx)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.6),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+  static const _weekdayNames = <String>[
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday',
+    'Friday', 'Saturday', 'Sunday',
+  ];
+  static const _monthNames = <String>[
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  /// Today / Yesterday for the last two days; weekday name for anything
+  /// else in the past 6 days; "May 21, 2026" for older.
+  String _formatDateDivider(DateTime at) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(at.year, at.month, at.day);
+    final diff = today.difference(day).inDays;
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Yesterday';
+    if (diff > 1 && diff < 7) {
+      return _weekdayNames[at.weekday - 1];
+    }
+    return '${_monthNames[at.month - 1]} ${at.day}, ${at.year}';
+  }
 
   Widget _buildComposer(
     BuildContext context,
