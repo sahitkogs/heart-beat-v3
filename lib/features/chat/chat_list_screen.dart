@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../chat/chat_providers.dart';
 import '../../core/widgets/wordmark.dart';
@@ -89,7 +90,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Wordmark(size: 22),
+          title: const _WordmarkWithVersion(),
           centerTitle: false,
           actions: [
             IconButton(
@@ -325,5 +326,49 @@ class _ChatTile extends ConsumerWidget {
       return '$hh:$mm';
     }
     return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
+  }
+}
+
+/// Wordmark with the current app version pinned to the right at small size.
+/// Caches the PackageInfo lookup at the file level so the network of widget
+/// rebuilds (search-bar toggle, chat-list stream emissions, etc.) doesn't
+/// re-hit the platform channel.
+class _WordmarkWithVersion extends StatelessWidget {
+  const _WordmarkWithVersion();
+
+  static Future<PackageInfo>? _cached;
+  static Future<PackageInfo> _info() =>
+      _cached ??= PackageInfo.fromPlatform();
+
+  @override
+  Widget build(BuildContext context) {
+    final muted =
+        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        const Wordmark(size: 22),
+        const SizedBox(width: 8),
+        FutureBuilder<PackageInfo>(
+          future: _info(),
+          builder: (_, snap) {
+            final v = snap.data?.version;
+            if (v == null) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Text(
+                'v$v',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: muted,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
   }
 }
