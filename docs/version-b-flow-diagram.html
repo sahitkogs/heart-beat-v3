@@ -1,0 +1,804 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>heart•beat Version B — A ↔ Relay ↔ B flow</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #161922;
+    --panel2: #1d2230;
+    --line: #2a2f3d;
+    --text: #e7e9ee;
+    --muted: #8a92a3;
+    --a: #6cc4ff;
+    --b: #ff9d6c;
+    --srv: #c89bff;
+    --ok: #6cdf8c;
+    --warn: #f5c66b;
+    --err: #ff6c7e;
+    --crypt: #4a5160;
+    --meta: #e0c25b;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 32px 24px 80px;
+  }
+  h1 {
+    font-size: 28px;
+    margin: 0 0 4px;
+  }
+  .sub {
+    color: var(--muted);
+    margin: 0 0 24px;
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 12px 16px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin-bottom: 32px;
+    font-size: 12.5px;
+  }
+  .legend .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .col-head {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 8px;
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    padding: 12px 0;
+    z-index: 10;
+    border-bottom: 1px solid var(--line);
+  }
+  .col-head .col {
+    text-align: center;
+    font-weight: 700;
+    font-size: 16px;
+    padding: 10px;
+    border-radius: 8px;
+  }
+  .col.a   { background: rgba(108, 196, 255, 0.12); color: var(--a);   border: 1px solid rgba(108,196,255,0.35); }
+  .col.srv { background: rgba(200, 155, 255, 0.12); color: var(--srv); border: 1px solid rgba(200,155,255,0.35); }
+  .col.b   { background: rgba(255, 157, 108, 0.12); color: var(--b);   border: 1px solid rgba(255,157,108,0.35); }
+  .step {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 18px;
+  }
+  .step h2 {
+    margin: 0 0 4px;
+    font-size: 17px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .step h2 .num {
+    background: var(--panel2);
+    color: var(--text);
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    border: 1px solid var(--line);
+  }
+  .step .summary {
+    color: var(--muted);
+    margin-bottom: 16px;
+    font-size: 13px;
+  }
+  .lanes {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0;
+    position: relative;
+    min-height: 90px;
+    border-top: 1px dashed var(--line);
+    padding-top: 16px;
+  }
+  .lane {
+    padding: 0 10px;
+    position: relative;
+  }
+  .lane .box {
+    background: var(--panel2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12.5px;
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .lane .box.ghost {
+    border-style: dashed;
+    color: var(--muted);
+    background: transparent;
+  }
+  .arrow {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    margin: 8px 0 0;
+  }
+  .arrow .seg {
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .arrow .seg.line::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0; right: 0;
+    height: 2px;
+    background: var(--meta);
+  }
+  .arrow .seg.line.crypt::before { background: var(--crypt); }
+  .arrow .seg.line.warn::before  { background: var(--warn); }
+  .arrow .seg.line.err::before   { background: var(--err); }
+  .arrow .seg.line.ok::before    { background: var(--ok); }
+  .arrow .label {
+    background: var(--bg);
+    padding: 2px 8px;
+    position: relative;
+    z-index: 1;
+    border-radius: 4px;
+    color: var(--text);
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 11.5px;
+    border: 1px solid var(--line);
+  }
+  .arrow .seg.head-right::after,
+  .arrow .seg.head-left::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0; height: 0;
+    border-top: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+  }
+  .arrow .seg.head-right::after { right: 0;  border-left: 8px solid var(--meta); }
+  .arrow .seg.head-left::after  { left: 0;   border-right: 8px solid var(--meta); }
+  .arrow .seg.head-right.crypt::after { border-left-color: var(--crypt); }
+  .arrow .seg.head-left.crypt::after  { border-right-color: var(--crypt); }
+  .arrow .seg.head-right.warn::after  { border-left-color: var(--warn); }
+  .arrow .seg.head-left.warn::after   { border-right-color: var(--warn); }
+  .arrow .seg.head-right.err::after   { border-left-color: var(--err); }
+  .arrow .seg.head-right.ok::after    { border-left-color: var(--ok); }
+  .arrow .seg.head-left.ok::after     { border-right-color: var(--ok); }
+  .state-row {
+    margin-top: 14px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+  .state {
+    background: var(--panel2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .state .label {
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+  }
+  .state .val {
+    font-family: ui-monospace, Consolas, monospace;
+    color: var(--text);
+  }
+  .state.empty .val { color: var(--muted); font-style: italic; }
+  .state.persist { border-color: rgba(255,108,126,0.35); }
+  .state.ephemeral { border-color: rgba(108,223,140,0.35); }
+  .note {
+    margin-top: 16px;
+    padding: 10px 14px;
+    background: rgba(245, 198, 107, 0.08);
+    border-left: 3px solid var(--warn);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 12.5px;
+  }
+  .note.good {
+    background: rgba(108, 223, 140, 0.08);
+    border-left-color: var(--ok);
+  }
+  .note.bad {
+    background: rgba(255, 108, 126, 0.08);
+    border-left-color: var(--err);
+  }
+  .pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-right: 6px;
+    border: 1px solid var(--line);
+    color: var(--text);
+    background: var(--panel2);
+  }
+  .pill.crypt { color: var(--crypt); border-color: var(--crypt); }
+  .pill.meta  { color: var(--meta);  border-color: var(--meta); }
+  .pill.ok    { color: var(--ok);    border-color: var(--ok); }
+  .pill.err   { color: var(--err);   border-color: var(--err); }
+  .footer {
+    margin-top: 40px;
+    padding: 18px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+  .footer h3 { margin: 0 0 8px; font-size: 15px; }
+  .footer ul { margin: 4px 0; padding-left: 20px; }
+  .footer li { margin: 3px 0; }
+  code { font-family: ui-monospace, Consolas, monospace; background: var(--panel2); padding: 1px 5px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1>heart•beat Version B — A ↔ Relay ↔ B</h1>
+  <p class="sub">
+    Step-by-step view of what each party does, what bytes cross the wire, and what
+    the server holds at each moment. Server is a dumb forwarder: no FCM, no
+    phonebook, no persistence beyond minimal connect/disconnect logs.
+  </p>
+
+  <div class="legend">
+    <span class="chip"><span class="dot" style="background:var(--meta)"></span> metadata (server sees)</span>
+    <span class="chip"><span class="dot" style="background:var(--crypt)"></span> ciphertext (opaque to server)</span>
+    <span class="chip"><span class="dot" style="background:var(--ok)"></span> success / ack</span>
+    <span class="chip"><span class="dot" style="background:var(--warn)"></span> server reply</span>
+    <span class="chip"><span class="dot" style="background:var(--err)"></span> failure / recipient_offline</span>
+    <span class="chip"><span class="dot" style="background:rgba(255,108,126,0.6)"></span> persistent on disk</span>
+    <span class="chip"><span class="dot" style="background:rgba(108,223,140,0.6)"></span> ephemeral (RAM)</span>
+  </div>
+
+  <div class="col-head">
+    <div class="col a">Device A</div>
+    <div class="col srv">Relay Server</div>
+    <div class="col b">Device B</div>
+  </div>
+
+  <!-- STEP 1 -->
+  <div class="step">
+    <h2><span class="num">1</span> A opens the WebSocket and authenticates</h2>
+    <div class="summary">
+      A signs <code>"WS-CONNECT:&lt;timestamp&gt;"</code> with its Ed25519 key and
+      sends pubkey + signature + timestamp as HTTP headers on the WS upgrade.
+      Server verifies and adds A to the in-memory <code>Hub</code> map.
+    </div>
+    <div class="lanes">
+      <div class="lane">
+        <div class="box">A_priv (Ed25519)
+A_pub: 700e3f..911cf8
+ts: 2026-05-25T10:00:00Z
+sig: ed25519(A_priv, "WS-CONNECT:"+ts)</div>
+      </div>
+      <div class="lane">
+        <div class="box ghost">no state yet</div>
+      </div>
+      <div class="lane">
+        <div class="box ghost">(B is offline)</div>
+      </div>
+    </div>
+    <div class="arrow">
+      <div class="seg line head-right">
+        <span class="label">HTTP UPGRADE → WS  +  X-Heartbeat-Pubkey / Sig / Timestamp</span>
+      </div>
+      <div class="seg"></div>
+      <div class="seg"></div>
+    </div>
+    <div class="state-row">
+      <div class="state empty"><div class="label">A on disk</div><div class="val">(client side — not the topic)</div></div>
+      <div class="state ephemeral">
+        <div class="label">Server RAM</div>
+        <div class="val">Hub = { 700e3f..911cf8 → wsSession_A }</div>
+      </div>
+      <div class="state empty"><div class="label">B</div><div class="val">offline</div></div>
+    </div>
+    <div class="note good">
+      Server stores nothing to disk. It records <em>"someone with pubkey X is
+      online now"</em> in RAM only — gone if the VM reboots.
+    </div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div class="step">
+    <h2><span class="num">2</span> B opens the WebSocket the same way</h2>
+    <div class="summary">
+      Symmetric to step 1. Server now has two entries in the Hub.
+    </div>
+    <div class="lanes">
+      <div class="lane">
+        <div class="box ghost">already connected</div>
+      </div>
+      <div class="lane">
+        <div class="box ghost">Hub has A</div>
+      </div>
+      <div class="lane">
+        <div class="box">B_priv (Ed25519)
+B_pub: 7b8869..675879
+ts, sig like step 1</div>
+      </div>
+    </div>
+    <div class="arrow">
+      <div class="seg"></div>
+      <div class="seg"></div>
+      <div class="seg line head-left">
+        <span class="label">HTTP UPGRADE → WS</span>
+      </div>
+    </div>
+    <div class="state-row">
+      <div class="state empty"><div class="label">A</div><div class="val">online, idle</div></div>
+      <div class="state ephemeral">
+        <div class="label">Server RAM</div>
+        <div class="val">Hub = {
+  A → wsSession_A,
+  B → wsSession_B
+}</div>
+      </div>
+      <div class="state empty"><div class="label">B on disk</div><div class="val">(client side)</div></div>
+    </div>
+  </div>
+
+  <!-- STEP 3 -->
+  <div class="step">
+    <h2><span class="num">3</span> A composes "hi" and the local outbox writes it</h2>
+    <div class="summary">
+      Before any byte leaves the device, A persists the message locally with
+      <code>status='pending'</code> and a fresh <code>msgId</code>. This is the
+      load-bearing guarantee: if A dies right now, the message survives on
+      A's disk and will be retried next boot.
+    </div>
+    <div class="lanes">
+      <div class="lane">
+        <div class="box">// A's SQLite
+messages.insert(
+  id:        msg_abc,
+  chatId:    B_pub,
+  body:      "hi",
+  lamport:   5,
+  status:    'pending',
+  sentAt:    now
+)</div>
+      </div>
+      <div class="lane">
+        <div class="box ghost">(no traffic yet)</div>
+      </div>
+      <div class="lane">
+        <div class="box ghost">unaware</div>
+      </div>
+    </div>
+    <div class="state-row">
+      <div class="state persist">
+        <div class="label">A on disk</div>
+        <div class="val">outbox: [{ msg_abc → pending }]</div>
+      </div>
+      <div class="state empty"><div class="label">Server</div><div class="val">no change</div></div>
+      <div class="state empty"><div class="label">B</div><div class="val">no change</div></div>
+    </div>
+  </div>
+
+  <!-- STEP 4 -->
+  <div class="step">
+    <h2><span class="num">4</span> A encrypts via libsignal and sends the frame</h2>
+    <div class="summary">
+      The inner envelope <code>{type:"text", msgId, body:"hi", lamport, ...}</code> is
+      libsignal-encrypted to B's identity. The server only sees the outer
+      JSON: <code>to</code> (B's pubkey) and an opaque base64 ciphertext blob.
+    </div>
+    <div class="lanes">
+      <div class="lane">
+        <div class="box">inner = {
+  v:1, type:"text",
+  msgId: "msg_abc",
+  chatId: A_pub,
+  lamport: 5,
+  body: "hi"
+}
+ct = libsignal.encrypt(B_pub, inner)
+frame = {
+  type:"send",
+  to: B_pub,
+  envelope: base64(wrap(ct))
+}</div>
+      </div>
+      <div class="lane">
+        <div class="box ghost">about to receive</div>
+      </div>
+      <div class="lane">
+        <div class="box ghost">about to receive</div>
+      </div>
+    </div>
+    <div class="arrow">
+      <div class="seg line crypt head-right">
+        <span class="label">{"type":"send", "to":B_pub, "envelope":"&lt;ct&gt;"}</span>
+      </div>
+      <div class="seg"></div>
+      <div class="seg"></div>
+    </div>
+    <div class="state-row">
+      <div class="state persist">
+        <div class="label">A on disk</div>
+        <div class="val">outbox: [{ msg_abc → sent }]   ← status bumps once WS write returns OK</div>
+      </div>
+      <div class="state ephemeral">
+        <div class="label">Server RAM</div>
+        <div class="val">// frame parsed, then
+//   ct bytes piped to B's socket
+// — gone after return</div>
+      </div>
+      <div class="state empty"><div class="label">B</div><div class="val">socket buffer has bytes</div></div>
+    </div>
+    <div class="note">
+      <span class="pill meta">META</span>The server learns: <em>A talked to B at this time, &lt;n&gt; bytes</em>.<br>
+      <span class="pill crypt">CRYPT</span>The server does NOT learn: it's a text message, the msgId, lamport, body, or even that <code>inner.type == "text"</code>. Could be an ack or an invite — identical on the wire.
+    </div>
+  </div>
+
+  <!-- STEP 5 -->
+  <div class="step">
+    <h2><span class="num">5</span> Server routes A's envelope to B</h2>
+    <div class="summary">
+      One Hub lookup, one socket write. No copy to disk, no log of the
+      envelope. With minimal logging policy, no log at all for this frame.
+    </div>
+    <div class="lanes">
+      <div class="lane">
+        <div class="box ghost">awaits ack</div>
+      </div>
+      <div class="lane">
+        <div class="box">// Go pseudocode
+sess, ok := Hub.map[frame.to]
+if ok {
+  sess.Write(
+    {"type":"deliver",
+     "from":A_pub,
+     "envelope": frame.envelope}
+  )
+}</div>
+      </div>
+      <div class="lane">
+        <div class="box ghost">about to receive</div>
+      </div>
+    </div>
+    <div class="arrow">
+      <div class="seg"></div>
+      <div class="seg line crypt head-right">
+        <span class="label">{"type":"deliver", "from":A_pub, "envelope":"&lt;ct&gt;"}</span>
+      </div>
+      <div class="seg"></div>
+    </div>
+    <div class="state-row">
+      <div class="state empty"><div class="label">A</div><div class="val">outbox: { msg_abc → sent }</div></div>
+      <div class="state ephemeral">
+        <div class="label">Server</div>
+        <div class="val">// after Write returns,
+// envelope bytes are freed</div>
+      </div>
+      <div class="state empty"><div class="label">B</div><div class="val">parsing inbound frame…</div></div>
+    </div>
+  </div>
+
+  <!-- STEP 6 -->
+  <div class="step">
+    <h2><span class="num">6</span> B decrypts, persists, and sends back a delivered_ack</h2>
+    <div class="summary">
+      B's libsignal session unwraps the ciphertext. The inner envelope is
+      stored to B's local DB. Immediately B builds and encrypts a new
+      <code>delivered_ack</code> envelope addressed back to A — same protocol,
+      just an inner-envelope kind only the two endpoints understand.
+    </div>
+    <div class="lanes">
+      <div class="lane">
+        <div class="box ghost">awaits ack</div>
+      </div>
+      <div class="lane">
+        <div class="box ghost">routing the ack next</div>
+      </div>
+      <div class="lane">
+        <div class="box">inner = libsignal.decrypt(ct)
+messages.insert(
+  id: msg_abc,
+  body: "hi",
+  receivedAt: now
+)
+
+ack_inner = {
+  type:"delivered_ack",
+  msgId:"msg_abc"
+}
+ack_ct = libsignal.encrypt(A_pub, ack_inner)
+send {to:A_pub, envelope:ack_ct}</div>
+      </div>
+    </div>
+    <div class="arrow">
+      <div class="seg"></div>
+      <div class="seg"></div>
+      <div class="seg line crypt head-left">
+        <span class="label">{"type":"send", "to":A_pub, "envelope":"&lt;ack_ct&gt;"}</span>
+      </div>
+    </div>
+    <div class="state-row">
+      <div class="state empty"><div class="label">A</div><div class="val">outbox: { msg_abc → sent }</div></div>
+      <div class="state ephemeral">
+        <div class="label">Server</div>
+        <div class="val">Hub unchanged
+forwards ack like any send</div>
+      </div>
+      <div class="state persist">
+        <div class="label">B on disk</div>
+        <div class="val">messages: [{ msg_abc, "hi", from A }]</div>
+      </div>
+    </div>
+    <div class="note good">
+      The server cannot tell this is an ack vs. a text — both are
+      <code>send</code> frames with opaque ciphertext. The
+      "delivered_ack" semantics live entirely inside the encrypted inner
+      envelope.
+    </div>
+  </div>
+
+  <!-- STEP 7 -->
+  <div class="step">
+    <h2><span class="num">7</span> A receives the ack and bumps the outbox status</h2>
+    <div class="summary">
+      A decrypts, finds <code>type:"delivered_ack", msgId:"msg_abc"</code>, and
+      updates the local row. UI flips from single tick to double tick.
+    </div>
+    <div class="lanes">
+      <div class="lane">
+        <div class="box">ack_inner = libsignal.decrypt(ack_ct)
+// → { type:"delivered_ack",
+//      msgId:"msg_abc" }
+messages.update(
+  id:"msg_abc",
+  status:"delivered",
+  deliveredAt: now
+)</div>
+      </div>
+      <div class="lane">
+        <div class="box ghost">no state to update</div>
+      </div>
+      <div class="lane">
+        <div class="box ghost">done for this message</div>
+      </div>
+    </div>
+    <div class="arrow">
+      <div class="seg line crypt head-left">
+        <span class="label">{"type":"deliver", "from":B_pub, "envelope":"&lt;ack_ct&gt;"}</span>
+      </div>
+      <div class="seg"></div>
+      <div class="seg"></div>
+    </div>
+    <div class="state-row">
+      <div class="state persist">
+        <div class="label">A on disk</div>
+        <div class="val">outbox: { msg_abc → delivered ✓✓ }</div>
+      </div>
+      <div class="state empty"><div class="label">Server</div><div class="val">— nothing —</div></div>
+      <div class="state persist">
+        <div class="label">B on disk</div>
+        <div class="val">messages: { msg_abc unread }</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 8 -->
+  <div class="step">
+    <h2><span class="num">8</span> B's user opens the chat thread → read_ack</h2>
+    <div class="summary">
+      Same protocol, different inner-envelope kind. A's UI flips from grey
+      double tick to blue double tick.
+    </div>
+    <div class="lanes">
+      <div class="lane">
+        <div class="box">messages.update(
+  id:"msg_abc",
+  status:"read",
+  readAt: now
+)</div>
+      </div>
+      <div class="lane">
+        <div class="box ghost">forwards opaque bytes</div>
+      </div>
+      <div class="lane">
+        <div class="box">// user opens thread
+read_inner = {
+  type:"read_ack",
+  msgId:"msg_abc"
+}
+send to A_pub</div>
+      </div>
+    </div>
+    <div class="arrow">
+      <div class="seg line crypt head-left">
+        <span class="label">deliver(read_ack)</span>
+      </div>
+      <div class="seg line crypt head-left">
+        <span class="label">send(read_ack)</span>
+      </div>
+      <div class="seg"></div>
+    </div>
+  </div>
+
+  <!-- STEP 9 -->
+  <div class="step">
+    <h2><span class="num">9</span> Failure path — B is offline when A sends</h2>
+    <div class="summary">
+      Server's Hub lookup misses. Server returns an <code>error</code> frame to
+      A. A's outbox keeps the message at <code>status='sent'</code> and never
+      promotes it. There is no FCM, no server queue — the bytes are gone after
+      the failed write attempt.
+    </div>
+    <div class="lanes">
+      <div class="lane">
+        <div class="box">// send attempt as in step 4</div>
+      </div>
+      <div class="lane">
+        <div class="box">_, ok := Hub.map[B_pub]
+if !ok {
+  reply {"type":"error",
+         "code":"recipient_offline",
+         "to": B_pub}
+  // drop envelope
+}</div>
+      </div>
+      <div class="lane">
+        <div class="box ghost">B disconnected
+or force-stopped</div>
+      </div>
+    </div>
+    <div class="arrow">
+      <div class="seg line crypt head-right">
+        <span class="label">send envelope</span>
+      </div>
+      <div class="seg line err head-left">
+        <span class="label">error: recipient_offline</span>
+      </div>
+      <div class="seg"></div>
+    </div>
+    <div class="state-row">
+      <div class="state persist">
+        <div class="label">A on disk</div>
+        <div class="val">outbox: { msg_abc → sent, last_try: t1 }
+// will retry on next reconnect/timer</div>
+      </div>
+      <div class="state empty"><div class="label">Server</div><div class="val">envelope discarded</div></div>
+      <div class="state empty"><div class="label">B</div><div class="val">offline, knows nothing</div></div>
+    </div>
+    <div class="note bad">
+      No FCM wake. B will not be notified out-of-band. The message is
+      genuinely undelivered until B opens the app and reconnects.
+    </div>
+  </div>
+
+  <!-- STEP 10 -->
+  <div class="step">
+    <h2><span class="num">10</span> Outbox retry — both online again</h2>
+    <div class="summary">
+      A's <code>RelayClient.onReconnected</code> fires (or a periodic 60s timer).
+      MessageService queries the outbox for any row with
+      <code>status IN ('pending','sent') AND last_try &lt; now()-10s</code> and
+      re-sends each. Recipient dedupes by <code>msgId</code>; if already persisted,
+      it re-emits the ack.
+    </div>
+    <div class="lanes">
+      <div class="lane">
+        <div class="box">for row in outbox.where(
+  status != 'delivered',
+  last_try &lt; now-10s
+):
+  resend(row)
+  row.last_try = now</div>
+      </div>
+      <div class="lane">
+        <div class="box">Hub.map[B_pub] now exists
+→ route as in step 5</div>
+      </div>
+      <div class="lane">
+        <div class="box">on receive:
+  if msgs.has(msgId):
+    // dedupe — re-ack only
+  else:
+    persist + ack</div>
+      </div>
+    </div>
+    <div class="arrow">
+      <div class="seg line crypt head-right">
+        <span class="label">resend</span>
+      </div>
+      <div class="seg line crypt head-right">
+        <span class="label">deliver</span>
+      </div>
+      <div class="seg"></div>
+    </div>
+    <div class="arrow">
+      <div class="seg line ok head-left">
+        <span class="label">deliver(delivered_ack)</span>
+      </div>
+      <div class="seg line ok head-left">
+        <span class="label">send(delivered_ack)</span>
+      </div>
+      <div class="seg"></div>
+    </div>
+    <div class="state-row">
+      <div class="state persist">
+        <div class="label">A on disk</div>
+        <div class="val">outbox: { msg_abc → delivered ✓✓ }</div>
+      </div>
+      <div class="state empty"><div class="label">Server</div><div class="val">forwarded, forgot</div></div>
+      <div class="state persist">
+        <div class="label">B on disk</div>
+        <div class="val">messages: { msg_abc, "hi" }</div>
+      </div>
+    </div>
+    <div class="note good">
+      This is the entire reliability mechanism. No server queue, no FCM. The
+      sender's device is the source of truth for "did this message make it."
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <h3>What lives on the server, total</h3>
+    <ul>
+      <li><strong>RAM, per active connection:</strong> the pubkey of who's connected + the open socket. Gone on disconnect or VM reboot.</li>
+      <li><strong>Disk:</strong> the Go binary, the systemd/Docker unit, optional TLS cert, container logs (configurable retention).</li>
+      <li><strong>Database:</strong> none. No phonebook. No FCM tokens. No message queue. No user table.</li>
+    </ul>
+    <h3 style="margin-top:14px">What the server can see while online</h3>
+    <ul>
+      <li>Which pubkeys are connected right now (must, for routing)</li>
+      <li>Pairs: who is sending to whom, when, how many bytes</li>
+      <li><strong>Cannot see:</strong> message body, msgId, message type (text/ack/invite/etc.), display names, group structure</li>
+    </ul>
+    <h3 style="margin-top:14px">Comparison vs. today</h3>
+    <ul>
+      <li>Today: server holds <code>pubkey → FCM token</code> in Firestore, has Firebase Admin credentials, logs deliver_offline + wake events.</li>
+      <li>Version B: server holds nothing on disk beyond logs you choose to keep. Runs on any $5/month VPS. No Firebase project required.</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

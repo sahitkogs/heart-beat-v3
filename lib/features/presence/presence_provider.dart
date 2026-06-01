@@ -24,6 +24,7 @@ class PresenceNotifier extends StateNotifier<Map<String, PresenceInfo>> {
 
   final Ref _ref;
   Timer? _timer;
+  bool _polling = false;
   static const pollInterval = Duration(seconds: 25);
 
   /// Foreground entry: poll immediately, then on an interval.
@@ -39,22 +40,38 @@ class PresenceNotifier extends StateNotifier<Map<String, PresenceInfo>> {
   }
 
   Future<void> pollOnce() async {
-    final contacts = await _ref.read(contactsListProvider.future);
-    if (contacts.isEmpty) return;
-    final pubkeys = contacts.map((c) => c.pubkeyHex).toList();
+    // Cold-launch startPolling() and an AppLifecycleState.resumed can both
+    // call pollOnce() concurrently → double HTTP + double flush. Guard so
+    // only one poll runs at a time.
+    if (_polling) return;
+    _polling = true;
+    try {
+      final contacts = await _ref.read(contactsListProvider.future);
+      if (contacts.isEmpty) return;
+      final pubkeys = contacts.map((c) => c.pubkeyHex).toList();
 
-    final client = _ref.read(presenceClientProvider);
-    final fresh = await client.fetchPresence(pubkeys);
-    if (fresh.isEmpty) return; // network error → keep last-known
+      final client = _ref.read(presenceClientProvider);
+      final fresh = await client.fetchPresence(pubkeys);
+      if (fresh.isEmpty) return; // network error → keep last-known
 
-    final ups = newlyOnline(state, fresh);
-    state = {...state, ...fresh};
+      // The server returns an entry for EVERY requested pubkey, and we only
+      // ever query the current contact list — so a full replace evicts
+      // deleted contacts instead of letting them linger. Compute `ups`
+      // against the OLD state BEFORE reassigning.
+      final ups = newlyOnline(state, fresh);
+      state = fresh;
 
-    if (ups.isNotEmpty) {
-      final ms = await _ref.read(messageServiceProvider.future);
-      for (final pk in ups) {
-        unawaited(ms.flushPeerOnReachable(pk));
+      if (ups.isNotEmpty) {
+        final ms = await _ref.read(messageServiceProvider.future);
+        for (final pk in ups) {
+          unawaited(ms.flushPeerOnReachable(pk).catchError((Object e) {
+            // ignore: avoid_print
+            print('[Presence] flush_failed peer=$pk err=$e');
+          }));
+        }
       }
+    } finally {
+      _polling = false;
     }
   }
 

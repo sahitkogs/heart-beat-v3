@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -14,6 +16,26 @@ class _RecordingSender implements RetransmitSender {
   Future<void> sendOnce(String peer, List<int> envelopeBytes) async {
     calls.add(_Sent(peer, envelopeBytes));
     if (fail) throw Exception('send failed');
+  }
+}
+
+/// Sender whose first send blocks on a caller-controlled [gate] so a test can
+/// hold one sweep "in flight" and prove a second concurrent sweep is guarded
+/// out (no double-send).
+class _GatedSender implements RetransmitSender {
+  _GatedSender(this.gate);
+  final Future<void> gate;
+  final calls = <_Sent>[];
+  bool _gated = false;
+  @override
+  Future<void> sendOnce(String peer, List<int> envelopeBytes) async {
+    calls.add(_Sent(peer, envelopeBytes));
+    // Only the FIRST send blocks; later sends (if any) return immediately so
+    // the test can observe whether a second sweep slipped through.
+    if (!_gated) {
+      _gated = true;
+      await gate;
+    }
   }
 }
 
@@ -236,5 +258,46 @@ void main() {
 
     await rx.flushForPeer('peerA');
     expect(sender.calls.map((c) => c.peer), contains('peerA'));
+  });
+
+  test('concurrent sweeps do not double-send the same due row', () async {
+    // A periodic sweep and a presence-triggered flushForPeer can overlap. The
+    // _sweeping re-entrancy guard must ensure the in-flight sweep owns the due
+    // row and the second sweep returns without re-sending it.
+    final gate = Completer<void>();
+    final gatedSender = _GatedSender(gate.future);
+    final gatedRx =
+        OutboxRetransmitter(outbox: outbox, chats: chats, sender: gatedSender);
+
+    final t = DateTime.now();
+    // One due row for peerA.
+    await seed(
+      createdAt: t.subtract(const Duration(minutes: 5)),
+      nextRetryAt: t.subtract(const Duration(seconds: 1)),
+    );
+
+    // Start sweep #1 WITHOUT awaiting — it sends the row then blocks on `gate`,
+    // so it's "in flight" with _sweeping == true.
+    final sweep1 = gatedRx.sweepOnceForTest(now: t);
+    // Let sweep #1 advance to the awaited send (so it has set _sweeping and is
+    // parked inside sendOnce on `gate`).
+    await Future<void>.delayed(Duration.zero);
+    expect(gatedSender.calls, hasLength(1),
+        reason: 'sweep #1 should have started exactly one send');
+
+    // Kick the same peer due-now and flush. flushForPeer runs its own _sweepAt,
+    // which must be guarded out because sweep #1 is still in flight.
+    await gatedRx.flushForPeer('peerA');
+    expect(gatedSender.calls, hasLength(1),
+        reason: 'guarded-out sweep must not send the row a second time');
+
+    // Release sweep #1 and let it finish.
+    gate.complete();
+    await sweep1;
+
+    // Still exactly one send total — no concurrent double-send.
+    expect(gatedSender.calls, hasLength(1));
+    expect(gatedSender.calls.single.peer, 'peerA');
+    gatedRx.stop();
   });
 }

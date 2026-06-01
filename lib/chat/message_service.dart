@@ -1619,8 +1619,6 @@ class MessageService {
   }
 
   /// Called by the presence poller when [peerPubkeyHex] transitions to online.
-  /// Flushes any stranded outbox messages to that peer.
-  /// Called by the presence poller when [peerPubkeyHex] transitions to online.
   /// Flushes any stranded outbox messages to that peer. No-op if Layer B
   /// (the retransmitter) isn't attached yet.
   Future<void> flushPeerOnReachable(String peerPubkeyHex) async {

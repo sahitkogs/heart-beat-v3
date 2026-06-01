@@ -25,6 +25,7 @@ class OutboxRetransmitter {
   final ChatsDao chats;
   final RetransmitSender sender;
   Timer? _sweepTimer;
+  bool _sweeping = false;
 
   static const sweepInterval = Duration(seconds: 10);
   static const maxAge = Duration(hours: 24);
@@ -86,6 +87,17 @@ class OutboxRetransmitter {
   Future<void> _sweep() => _sweepAt(DateTime.now());
 
   Future<void> _sweepAt(DateTime now) async {
+    if (_sweeping) return; // a sweep is already in flight; due rows persist and
+                           // will be picked up by the in-flight or next sweep.
+    _sweeping = true;
+    try {
+      await _sweepBody(now);
+    } finally {
+      _sweeping = false;
+    }
+  }
+
+  Future<void> _sweepBody(DateTime now) async {
     final due = await outbox.dueBefore(now);
     for (final row in due) {
       final isReceipt = row.kind == 'receipt';
