@@ -25,12 +25,16 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
   Future<void> _refresh() async {
     setState(() => _busy = true);
     final db = ref.read(appDatabaseProvider);
-    final r = await computeIntegrityReport(db);
-    if (mounted) {
-      setState(() {
-        _report = r;
-        _busy = false;
-      });
+    try {
+      final r = await computeIntegrityReport(db);
+      if (mounted) {
+        setState(() {
+          _report = r;
+          _busy = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -38,11 +42,19 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
     final r = _report;
     if (r == null || r.stuckPeers.isEmpty) return;
     setState(() => _busy = true);
-    final ms = await ref.read(messageServiceProvider.future);
-    for (final pk in r.stuckPeers) {
-      await ms.flushPeerOnReachable(pk);
+    try {
+      final ms = await ref.read(messageServiceProvider.future);
+      if (!mounted) return;
+      for (final pk in r.stuckPeers) {
+        await ms.flushPeerOnReachable(pk);
+        if (!mounted) return;
+      }
+      await _refresh();
+    } catch (e) {
+      // ignore: avoid_print
+      print('[Diagnostics] rekick_failed err=$e');
+      if (mounted) setState(() => _busy = false);
     }
-    await _refresh();
   }
 
   @override

@@ -37,12 +37,9 @@ Future<IntegrityReport> computeIntegrityReport(AppDatabase db) async {
 
   // Stuck outbox: pending rows older than the 24h expiry cutoff.
   final stuckRows = await outbox.olderThanStillPending(cutoff);
-  final stuckPeers = <String>[];
-  for (final row in stuckRows) {
-    if (!stuckPeers.contains(row.peerPubkeyHex)) {
-      stuckPeers.add(row.peerPubkeyHex);
-    }
-  }
+  final stuckPeers = <String>{
+    for (final row in stuckRows) row.peerPubkeyHex,
+  }.toList();
 
   // Orphaned sent: messages stuck in `sent` with no outbox row backing them.
   final orphanedSent = await chats.countOrphanedSent();
