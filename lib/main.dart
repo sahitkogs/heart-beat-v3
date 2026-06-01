@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:app_links/app_links.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +11,8 @@ import 'features/chat/chat_list_screen.dart';
 import 'features/presence/presence_provider.dart';
 import 'features/chat/chat_thread_screen.dart';
 import 'features/chat/chat_thread_provider.dart';
+import 'features/contacts/add_contact_screen.dart';
+import 'features/contacts/contact_link.dart';
 import 'features/contacts/contacts_provider.dart';
 import 'features/profile/display_name_setup_screen.dart';
 import 'firebase_options.dart';
@@ -80,17 +85,40 @@ Future<void> main() async {
     print('[main] getLaunchPayload error: $e');
   }
 
+  // Cold-launch from a tapped heartbeat://add deep link: the OS started us
+  // with the initial URI. Parse it into a ContactLink (null if the `k` param
+  // isn't a valid pubkey) and thread it through the same way as
+  // coldLaunchChatId so StartupRouter can push the prefilled AddContactScreen.
+  ContactLink? coldLaunchContact;
+  try {
+    final initialUri = await AppLinks().getInitialLink();
+    if (initialUri != null) coldLaunchContact = ContactLink.parse(initialUri);
+  } catch (_) {
+    // No deep link / unsupported platform — ignore.
+  }
+
   runApp(ProviderScope(
-      child: HeartbeatV3App(coldLaunchChatId: coldLaunchChatId)));
+      child: HeartbeatV3App(
+    coldLaunchChatId: coldLaunchChatId,
+    coldLaunchContact: coldLaunchContact,
+  )));
 }
 
 class HeartbeatV3App extends ConsumerStatefulWidget {
-  const HeartbeatV3App({super.key, this.coldLaunchChatId});
+  const HeartbeatV3App({
+    super.key,
+    this.coldLaunchChatId,
+    this.coldLaunchContact,
+  });
 
   /// Chat id (direct = peer pubkey hex, group = group hex id) carried over
   /// by a notification that woke the process from a fully-killed state.
   /// Null on a regular launch.
   final String? coldLaunchChatId;
+
+  /// Add-contact link carried over by a heartbeat://add deep link that woke
+  /// the process from a fully-killed state. Null on a regular launch.
+  final ContactLink? coldLaunchContact;
 
   @override
   ConsumerState<HeartbeatV3App> createState() => _HeartbeatV3AppState();
@@ -101,14 +129,33 @@ class _HeartbeatV3AppState extends ConsumerState<HeartbeatV3App>
   // Cold-launch routing is owned by StartupRouter (not duplicated here)
   // so the chat-thread push and the '/chats' replacement don't race.
 
+  /// Warm (app-already-running) heartbeat://add deep link subscription.
+  StreamSubscription<Uri>? _linkSub;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
+    // Warm deep links: while the app is running, a tapped heartbeat://add
+    // link arrives here. Parse it and push the prefilled AddContactScreen on
+    // top of whatever is currently shown. Subscribed once; cancelled in
+    // dispose(). The cold-launch initial URI is handled separately in main().
+    _linkSub = AppLinks().uriLinkStream.listen((uri) {
+      final contact = ContactLink.parse(uri);
+      if (contact == null) return;
+      rootNavigatorKey.currentState?.push(MaterialPageRoute(
+        builder: (_) => AddContactScreen(
+          initialHex: contact.pubkeyHex,
+          initialName: contact.name,
+        ),
+      ));
+    });
   }
 
   @override
   void dispose() {
+    _linkSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -146,7 +193,10 @@ class _HeartbeatV3AppState extends ConsumerState<HeartbeatV3App>
       routes: {
         '/chats': (_) => const ChatListScreen(),
       },
-      home: StartupRouter(coldLaunchChatId: widget.coldLaunchChatId),
+      home: StartupRouter(
+        coldLaunchChatId: widget.coldLaunchChatId,
+        coldLaunchContact: widget.coldLaunchContact,
+      ),
     );
   }
 }
@@ -161,12 +211,21 @@ class _HeartbeatV3AppState extends ConsumerState<HeartbeatV3App>
 /// Owning all cold-launch routing here avoids the previous race between this
 /// screen's pushReplacementNamed and a duplicate push in HeartbeatV3App.
 class StartupRouter extends ConsumerStatefulWidget {
-  const StartupRouter({super.key, this.coldLaunchChatId});
+  const StartupRouter({
+    super.key,
+    this.coldLaunchChatId,
+    this.coldLaunchContact,
+  });
 
   /// Chat id (direct = peer pubkey hex, group = group hex id) carried in by
   /// a tapped notification that woke the process from a killed state. Null
   /// on a regular launch.
   final String? coldLaunchChatId;
+
+  /// Add-contact link carried in by a heartbeat://add deep link that woke the
+  /// process from a killed state. Null on a regular launch. Pushed on top of
+  /// '/chats' so back returns to the chat list.
+  final ContactLink? coldLaunchContact;
 
   @override
   ConsumerState<StartupRouter> createState() => _StartupRouterState();
@@ -191,12 +250,24 @@ class _StartupRouterState extends ConsumerState<StartupRouter> {
         return;
       }
       final chatId = widget.coldLaunchChatId;
+      final contact = widget.coldLaunchContact;
       Navigator.of(context).pushReplacementNamed('/chats');
       if (chatId != null) {
         // pushReplacementNamed above completes synchronously enough that
         // the new ChatListScreen is on the stack before we push the thread.
         Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => ChatThreadScreen(chatId: chatId),
+        ));
+      }
+      if (contact != null) {
+        // Same as the chat-thread push above: lands on top of '/chats' so
+        // back returns to the chat list. Coexists with a chatId push if both
+        // happen to be set (AddContactScreen ends up on top).
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => AddContactScreen(
+            initialHex: contact.pubkeyHex,
+            initialName: contact.name,
+          ),
         ));
       }
     });
