@@ -21,7 +21,12 @@ import 'scan_handler.dart';
 enum _Stage { chooseMethod, scanQr, nameContact, pasteHex, shareBack }
 
 class AddContactScreen extends ConsumerStatefulWidget {
-  const AddContactScreen({super.key});
+  const AddContactScreen({super.key, this.initialHex, this.initialName});
+
+  /// When non-null, the screen opens directly on the paste-hex stage with
+  /// these values pre-populated (used by deep-link routing).
+  final String? initialHex;
+  final String? initialName;
 
   @override
   ConsumerState<AddContactScreen> createState() => _AddContactScreenState();
@@ -46,6 +51,16 @@ class _AddContactScreenState extends ConsumerState<AddContactScreen> {
   /// Label of the just-added contact (resolveName output). Shown on the
   /// shareBack stage to personalize the prompt.
   String? _savedContactLabel;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialHex != null && widget.initialHex!.isNotEmpty) {
+      _pasteCtrl.text = widget.initialHex!;
+      _nicknameCtrl.text = widget.initialName ?? '';
+      _stage = _Stage.pasteHex;
+    }
+  }
 
   @override
   void dispose() {
