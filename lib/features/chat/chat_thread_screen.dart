@@ -362,6 +362,14 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen>
               if (peerContact != null) ...[
                 const Divider(height: 1),
                 ListTile(
+                  leading: const Icon(Icons.ios_share),
+                  title: const Text('Share contact'),
+                  onTap: () async {
+                    Navigator.of(sheetCtx).pop();
+                    await shareContact(context, peerContact);
+                  },
+                ),
+                ListTile(
                   leading: const Icon(Icons.edit_outlined),
                   title: const Text('Rename'),
                   onTap: () async {

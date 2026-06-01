@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../chat/chat_providers.dart';
 import '../../data/app_database.dart';
@@ -7,7 +8,16 @@ import '../../data/models/contact.dart' as model;
 import '../../util/display_name.dart';
 import '../chat/message_service_provider.dart';
 import '../identity/identity_provider.dart';
+import 'contact_link.dart';
 import 'contacts_provider.dart';
+
+/// Shares an add-link for [contact] via the OS share sheet. No dialog — goes
+/// straight to the system chooser (which includes heart•beat itself).
+Future<void> shareContact(BuildContext context, model.Contact contact) async {
+  final name = resolveName(contact.pubkeyHex, contact);
+  final uri = ContactLink(contact.pubkeyHex, name).toUri();
+  await Share.share('Add $name on heart•beat: $uri');
+}
 
 /// Open the rename dialog for [contact]. Returns true if the user saved a
 /// new non-empty display name.
