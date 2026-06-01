@@ -9,6 +9,9 @@ import '../../util/display_name.dart';
 import '../contacts/contact_actions.dart';
 import '../contacts/contacts_provider.dart';
 import '../identity/identity_provider.dart';
+import '../presence/presence_badge.dart';
+import '../presence/presence_provider.dart';
+import '../presence/presence_status.dart';
 import 'chat_thread_provider.dart';
 import 'composer.dart';
 import 'group_settings_screen.dart';
@@ -143,14 +146,37 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen>
       final peerContact = contactsByPk[widget.chatId];
       final peerName = resolveName(widget.chatId, peerContact);
       avatarLabel = peerName;
+      // Direct-chat header: name + presence badge on the top line, with a
+      // dimmed "last seen" subtitle underneath (B5).
+      final lastSeen =
+          lastSeenLabel(ref.watch(presenceProvider)[widget.chatId], DateTime.now());
       titleWidget = InkWell(
         onTap: () => _openDirectContactSheet(context, peerName, peerContact),
-        child: Row(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Flexible(child: Text(peerName, overflow: TextOverflow.ellipsis)),
-            const SizedBox(width: 4),
-            const Icon(Icons.expand_more, size: 20),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(child: Text(peerName, overflow: TextOverflow.ellipsis)),
+                const SizedBox(width: 6),
+                PresenceBadge(pubkeyHex: widget.chatId),
+                const SizedBox(width: 4),
+                const Icon(Icons.expand_more, size: 20),
+              ],
+            ),
+            if (lastSeen.isNotEmpty)
+              Text(
+                lastSeen,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.6),
+                ),
+              ),
           ],
         ),
       );

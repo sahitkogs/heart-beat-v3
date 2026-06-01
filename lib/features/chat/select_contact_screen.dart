@@ -5,6 +5,7 @@ import '../../core/widgets/wordmark.dart';
 import '../../util/display_name.dart';
 import '../contacts/add_contact_screen.dart';
 import '../contacts/contacts_provider.dart';
+import '../presence/presence_badge.dart';
 import 'chat_thread_screen.dart';
 import 'new_group_screen.dart';
 
@@ -94,7 +95,14 @@ class SelectContactScreen extends ConsumerWidget {
                 final name = resolveName(c.pubkeyHex, c);
                 return ListTile(
                   leading: InitialAvatar(label: name),
-                  title: Text(name),
+                  title: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(child: Text(name)),
+                      const SizedBox(width: 6),
+                      PresenceBadge(pubkeyHex: c.pubkeyHex),
+                    ],
+                  ),
                   subtitle: Text(
                     shortPubkey(c.pubkeyHex),
                     style: TextStyle(

@@ -5,6 +5,7 @@ import '../../core/widgets/app_header.dart';
 import '../../core/widgets/wordmark.dart';
 import '../../util/display_name.dart';
 import '../chat/chat_thread_screen.dart';
+import '../presence/presence_badge.dart';
 import 'add_contact_screen.dart';
 import 'contact_actions.dart';
 import 'contacts_provider.dart';
@@ -50,7 +51,14 @@ class ContactsScreen extends ConsumerWidget {
               final title = resolveName(c.pubkeyHex, c);
               return ListTile(
                 leading: InitialAvatar(label: title),
-                title: Text(title),
+                title: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(child: Text(title)),
+                    const SizedBox(width: 6),
+                    PresenceBadge(pubkeyHex: c.pubkeyHex),
+                  ],
+                ),
                 subtitle: Text(
                   shortPubkey(c.pubkeyHex),
                   style: TextStyle(

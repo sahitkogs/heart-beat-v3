@@ -12,6 +12,7 @@ import '../contacts/contacts_provider.dart';
 import '../contacts/contacts_screen.dart';
 import '../identity/identity_screen.dart';
 import '../notifications/fcm_provider.dart';
+import '../presence/presence_badge.dart';
 import 'chat_thread_screen.dart';
 import 'message_service_provider.dart';
 import 'select_contact_screen.dart';
@@ -295,9 +296,18 @@ class _ChatTile extends ConsumerWidget {
     return ListTile(
       leading: InitialAvatar(label: title),
       // 10.4.3d UI — same +30% bump as group tiles.
-      title: Text(
-        title,
-        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              title,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+            ),
+          ),
+          const SizedBox(width: 6),
+          PresenceBadge(pubkeyHex: pk),
+        ],
       ),
       subtitle: Text(
         subtitle,

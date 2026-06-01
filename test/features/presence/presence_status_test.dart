@@ -30,4 +30,26 @@ void main() {
   test('unknown when no presence info at all', () {
     expect(presenceStatusFor(null, now), PresenceStatus.unknown);
   });
+
+  group('lastSeenLabel', () {
+    test('online when server says online', () {
+      expect(lastSeenLabel(const PresenceInfo(online: true), now), 'online');
+    });
+
+    test('empty string when no info', () {
+      expect(lastSeenLabel(null, now), '');
+    });
+
+    test('minutes ago', () {
+      final info = PresenceInfo(
+          online: false, lastSeen: now.subtract(const Duration(minutes: 5)));
+      expect(lastSeenLabel(info, now), 'last seen 5m ago');
+    });
+
+    test('days ago', () {
+      final info = PresenceInfo(
+          online: false, lastSeen: now.subtract(const Duration(days: 3)));
+      expect(lastSeenLabel(info, now), 'last seen 3d ago');
+    });
+  });
 }
