@@ -64,4 +64,14 @@ class OutboxDao extends DatabaseAccessor<AppDatabase> with _$OutboxDaoMixin {
           ..where((t) => t.peerPubkeyHex.equals(peerPubkeyHex)))
         .go();
   }
+
+  /// Sets `nextRetryAt = now` for every outbox row addressed to
+  /// [peerPubkeyHex], pulling them into the next retransmit sweep immediately.
+  /// Returns the number of rows kicked. Used by the presence-triggered flush
+  /// when a peer transitions to online.
+  Future<int> kickPeer(String peerPubkeyHex, DateTime now) async {
+    return (update(outbox)
+          ..where((t) => t.peerPubkeyHex.equals(peerPubkeyHex)))
+        .write(OutboxCompanion(nextRetryAt: Value(now)));
+  }
 }

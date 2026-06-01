@@ -82,4 +82,24 @@ void main() {
     expect(await dao.findByMsgId('p1m2'), isNull);
     expect(await dao.findByMsgId('p2m1'), isNotNull);
   });
+
+  test('kickPeer resets nextRetryAt to now for that peer only', () async {
+    final future = DateTime.now().add(const Duration(hours: 1));
+    await dao.insert(
+      msgId: 'm1', peerPubkeyHex: 'peerA', envelopeBytes: [1],
+      createdAt: DateTime.now(), nextRetryAt: future,
+    );
+    await dao.insert(
+      msgId: 'm2', peerPubkeyHex: 'peerB', envelopeBytes: [2],
+      createdAt: DateTime.now(), nextRetryAt: future,
+    );
+
+    final now = DateTime.now();
+    final kicked = await dao.kickPeer('peerA', now);
+    expect(kicked, 1);
+
+    final due = await dao.dueBefore(now.add(const Duration(seconds: 1)));
+    expect(due.map((r) => r.msgId), contains('m1'));
+    expect(due.map((r) => r.msgId), isNot(contains('m2')));
+  });
 }
