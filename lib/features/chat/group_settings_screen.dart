@@ -126,7 +126,7 @@ class _GroupHeader extends ConsumerWidget {
       orElse: () => null,
     );
     final creatorLabel =
-        creator == me ? 'you' : resolveName(creator, creatorContact);
+        creator == me ? 'You' : resolveName(creator, creatorContact);
     final countLabel =
         memberCount != null ? '$memberCount members' : '— members';
     final muted = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
@@ -199,8 +199,10 @@ class _MemberList extends ConsumerWidget {
         final member = members[isCreator ? index - 1 : index];
         final memberIsCreator = member.memberPubkeyHex == chat.creatorPubkeyHex;
         final memberIsMe = member.memberPubkeyHex == me;
-        final memberLabel = resolveName(
-            member.memberPubkeyHex, contactsByPk[member.memberPubkeyHex]);
+        final memberLabel = memberIsMe
+            ? 'You'
+            : resolveName(
+                member.memberPubkeyHex, contactsByPk[member.memberPubkeyHex]);
 
         return ListTile(
           leading: InitialAvatar(label: memberLabel),
@@ -208,7 +210,6 @@ class _MemberList extends ConsumerWidget {
             children: [
               Text(memberLabel),
               if (memberIsCreator) const _Badge(label: 'admin'),
-              if (memberIsMe) const _Badge(label: 'you'),
             ],
           ),
           trailing: isCreator && !memberIsCreator
