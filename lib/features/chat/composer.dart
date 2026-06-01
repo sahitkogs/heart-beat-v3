@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 
 class Composer extends StatefulWidget {
-  const Composer({super.key, required this.onSend});
+  const Composer({super.key, required this.onSend, this.initialText});
 
   final Future<void> Function(String text) onSend;
+
+  /// Optional text to pre-seed the composer with on first build (e.g. text
+  /// forwarded INTO heart•beat via share). Seeded once in initState so it
+  /// doesn't clobber what the user types on later rebuilds.
+  final String? initialText;
 
   @override
   State<Composer> createState() => _ComposerState();
@@ -12,6 +17,15 @@ class Composer extends StatefulWidget {
 class _ComposerState extends State<Composer> {
   final _controller = TextEditingController();
   bool _sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final seed = widget.initialText;
+    if (seed != null && seed.isNotEmpty) {
+      _controller.text = seed;
+    }
+  }
 
   Future<void> _submit() async {
     final text = _controller.text.trim();

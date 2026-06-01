@@ -19,9 +19,18 @@ import 'message_bubble.dart';
 import 'message_service_provider.dart';
 
 class ChatThreadScreen extends ConsumerStatefulWidget {
-  const ChatThreadScreen({super.key, required this.chatId});
+  const ChatThreadScreen({
+    super.key,
+    required this.chatId,
+    this.initialComposerText,
+  });
 
   final String chatId;
+
+  /// Optional text to pre-seed the message composer with when this thread is
+  /// opened (e.g. forwarding text shared INTO heart•beat). Threaded down to
+  /// the child [Composer] and seeded once on first build.
+  final String? initialComposerText;
 
   @override
   ConsumerState<ChatThreadScreen> createState() => _ChatThreadScreenState();
@@ -567,6 +576,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen>
 
     final svc = messageSvcAsync.value!;
     return Composer(
+      initialText: widget.initialComposerText,
       onSend: (text) => isGroup
           ? svc.sendGroupText(chatId: widget.chatId, body: text)
           : svc.sendText(peerPubkeyHex: widget.chatId, body: text),
