@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'chat/chat_providers.dart';
 import 'features/chat/chat_list_screen.dart';
+import 'features/presence/presence_provider.dart';
 import 'features/chat/chat_thread_screen.dart';
 import 'features/chat/chat_thread_provider.dart';
 import 'features/contacts/contacts_provider.dart';
@@ -119,14 +120,18 @@ class _HeartbeatV3AppState extends ConsumerState<HeartbeatV3App>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state != AppLifecycleState.resumed) return;
-    // StreamProviders re-subscribe to drift's watch() on invalidate, so the
-    // newly-emitted snapshot reflects current row state.
-    ref.invalidate(chatsStreamProvider);
-    ref.invalidate(chatThreadProvider);
-    ref.invalidate(chatProvider);
-    ref.invalidate(groupActiveMembersProvider);
-    ref.invalidate(contactsListProvider);
+    if (state == AppLifecycleState.resumed) {
+      // StreamProviders re-subscribe to drift's watch() on invalidate, so the
+      // newly-emitted snapshot reflects current row state.
+      ref.invalidate(chatsStreamProvider);
+      ref.invalidate(chatThreadProvider);
+      ref.invalidate(chatProvider);
+      ref.invalidate(groupActiveMembersProvider);
+      ref.invalidate(contactsListProvider);
+      ref.read(presenceProvider.notifier).startPolling();
+    } else if (state == AppLifecycleState.paused) {
+      ref.read(presenceProvider.notifier).stopPolling();
+    }
   }
 
   @override
@@ -172,6 +177,10 @@ class _StartupRouterState extends ConsumerState<StartupRouter> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Cold-launch: no AppLifecycleState.resumed fires when the app starts
+      // already-foregrounded, so kick the poller here. startPolling() is
+      // idempotent (timer ??= …), so this is safe if resumed fires as well.
+      ref.read(presenceProvider.notifier).startPolling();
       final dao = ref.read(profileDaoProvider);
       final row = await dao.get();
       if (!mounted) return;
