@@ -71,6 +71,18 @@ class OutboxRetransmitter {
   /// body with `DateTime.now()`.
   Future<void> sweepOnceForTest({required DateTime now}) => _sweepAt(now);
 
+  /// Presence-triggered flush: kick every pending row for [peerPubkeyHex] to
+  /// due-now, then run one sweep so they go out immediately. Safe to call
+  /// repeatedly — the sweep + receipt dedup prevents duplicate delivery.
+  Future<void> flushForPeer(String peerPubkeyHex) async {
+    final now = DateTime.now();
+    final kicked = await outbox.kickPeer(peerPubkeyHex, now);
+    if (kicked == 0) return;
+    // ignore: avoid_print
+    print('[OR] flush_for_peer peer=$peerPubkeyHex kicked=$kicked');
+    await _sweepAt(now);
+  }
+
   Future<void> _sweep() => _sweepAt(DateTime.now());
 
   Future<void> _sweepAt(DateTime now) async {

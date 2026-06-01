@@ -220,4 +220,21 @@ void main() {
       expect(receiptRow!.nextRetryAt, t.add(const Duration(seconds: 5)));
     });
   });
+
+  test('flushForPeer retransmits a not-yet-due row immediately', () async {
+    final future = DateTime.now().add(const Duration(hours: 1));
+    // Seed a pending 'text' row for peerA due in the future.
+    // seed() hardcodes peerPubkeyHex: 'peerA', which is exactly what we need.
+    await seed(
+      createdAt: DateTime.now(),
+      nextRetryAt: future,
+    );
+
+    // A present-time sweep does NOT pick up a future-due row.
+    await rx.sweepOnceForTest(now: DateTime.now());
+    expect(sender.calls, isEmpty);
+
+    await rx.flushForPeer('peerA');
+    expect(sender.calls.map((c) => c.peer), contains('peerA'));
+  });
 }
