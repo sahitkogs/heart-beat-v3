@@ -6,6 +6,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../chat/chat_providers.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/theme_mode_provider.dart';
+import '../diagnostics/diagnostics_screen.dart';
 import 'identity_provider.dart';
 
 class IdentityScreen extends ConsumerWidget {
@@ -93,6 +94,16 @@ class _IdentityBodyState extends ConsumerState<_IdentityBody> {
             const SizedBox(height: 24),
             const Divider(),
             const _ThemeToggle(),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.bug_report_outlined),
+              title: const Text('Diagnostics'),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const DiagnosticsScreen(),
+                ),
+              ),
+            ),
             const Divider(),
             const SizedBox(height: 16),
             const Text(
