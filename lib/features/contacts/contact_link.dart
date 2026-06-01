@@ -18,7 +18,7 @@ class ContactLink {
     final suffix = (name != null && name!.isNotEmpty)
         ? '&n=${Uri.encodeComponent(name!)}'
         : '';
-    return Uri.parse('${_base}?k=$k$suffix');
+    return Uri.parse('$_base?k=$k$suffix');
   }
 
   /// Parse either the https landing URL or the heartbeat://add deep link.
