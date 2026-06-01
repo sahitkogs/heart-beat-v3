@@ -13,6 +13,7 @@ import '../contacts/contacts_screen.dart';
 import '../identity/identity_screen.dart';
 import '../notifications/fcm_provider.dart';
 import '../presence/presence_badge.dart';
+import '../sharing/pending_share_provider.dart';
 import 'chat_thread_screen.dart';
 import 'message_service_provider.dart';
 import 'select_contact_screen.dart';
@@ -82,6 +83,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
   @override
   Widget build(BuildContext context) {
     final chatsAsync = ref.watch(chatsStreamProvider);
+    final forwarding = ref.watch(pendingShareTextProvider);
     return PopScope(
       // Intercept the Android back button when search is open so it
       // collapses the search bar instead of popping the screen.
@@ -130,6 +132,21 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
         ),
         body: Column(
           children: [
+            if (forwarding != null)
+              Material(
+                color: Theme.of(context).colorScheme.secondaryContainer,
+                child: ListTile(
+                  leading: const Icon(Icons.forward),
+                  title: const Text('Select a chat to forward to'),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.close),
+                    tooltip: 'Cancel forwarding',
+                    onPressed: () => ref
+                        .read(pendingShareTextProvider.notifier)
+                        .state = null,
+                  ),
+                ),
+              ),
             if (_searchVisible)
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -220,7 +237,25 @@ class _ChatTile extends ConsumerWidget {
     if (chat.kind == 'group') {
       return _buildGroupTile(context, ref);
     }
-    return _buildDirectTile(context);
+    return _buildDirectTile(context, ref);
+  }
+
+  /// Open this chat's thread. In forward mode (pending shared text set) the
+  /// text is pre-seeded into the composer and the pending state is cleared so
+  /// we leave forward mode; otherwise this is the normal open-thread tap.
+  void _openThread(BuildContext context, WidgetRef ref) {
+    final fwd = ref.read(pendingShareTextProvider);
+    if (fwd != null) {
+      ref.read(pendingShareTextProvider.notifier).state = null;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ChatThreadScreen(
+          chatId: chat.chatId,
+          initialComposerText: fwd,
+        ),
+      ),
+    );
   }
 
   Widget _buildGroupTile(BuildContext context, WidgetRef ref) {
@@ -277,15 +312,11 @@ class _ChatTile extends ConsumerWidget {
             ),
         ],
       ),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ChatThreadScreen(chatId: chat.chatId),
-        ),
-      ),
+      onTap: () => _openThread(context, ref),
     );
   }
 
-  Widget _buildDirectTile(BuildContext context) {
+  Widget _buildDirectTile(BuildContext context, WidgetRef ref) {
     final pk = chat.chatId;
     final contact = contacts[pk];
     final title = resolveName(pk, contact);
@@ -316,11 +347,7 @@ class _ChatTile extends ConsumerWidget {
         style: const TextStyle(fontSize: 16),
       ),
       trailing: Text(trailing, style: Theme.of(context).textTheme.bodySmall),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ChatThreadScreen(chatId: chat.chatId),
-        ),
-      ),
+      onTap: () => _openThread(context, ref),
     );
   }
 
