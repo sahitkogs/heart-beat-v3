@@ -93,8 +93,9 @@ Future<void> main() async {
   try {
     final initialUri = await AppLinks().getInitialLink();
     if (initialUri != null) coldLaunchContact = ContactLink.parse(initialUri);
-  } catch (_) {
-    // No deep link / unsupported platform — ignore.
+  } catch (e) {
+    // ignore: avoid_print
+    print('[main] getInitialLink error: $e');
   }
 
   runApp(ProviderScope(
