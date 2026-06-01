@@ -3341,4 +3341,56 @@ void main() {
       await db2.close();
     });
   });
+
+  group('flushPeerOnReachable (C3)', () {
+    test('retransmits stranded outbox rows when peer comes online', () async {
+      // Wire up a real OutboxRetransmitter over the in-memory DB.
+      service.attachLayerB();
+
+      // Bootstrap: emit peer bundle so _FakeCrypto has a "session" and
+      // peerBundleDao marks peerBundleReceivedAt. This is required because
+      // _encryptAndSend (called by the retransmitter's sendOnce) uses
+      // _FakeCrypto.encrypt which works without a real session, but we must
+      // mark the bundle received so a future sendText call would encrypt too.
+      relay.emit(DeliverFrame(
+        fromPubkeyHex: peerPub,
+        envelope: EnvelopeWire.wrapPreKeyBundle(peerBundle()),
+      ));
+      await drainMicrotasks();
+
+      // Seed a stranded outbox row for peerPub with nextRetryAt far in the future
+      // (simulating a message stuck because the peer was offline at send time).
+      final innerBytes = InnerEnvelope.buildText(
+        chatId: myPub,
+        lamport: 1,
+        body: 'stranded',
+        msgId: 'stranded-msg-1',
+      );
+      final farFuture = DateTime.now().add(const Duration(hours: 1));
+      await outboxDao.insert(
+        msgId: 'stranded-msg-1',
+        peerPubkeyHex: peerPub,
+        envelopeBytes: innerBytes,
+        createdAt: DateTime.now(),
+        nextRetryAt: farFuture,
+      );
+
+      final sentBefore = relay.sent.length;
+
+      // Call the method under test.
+      await service.flushPeerOnReachable(peerPub);
+
+      // The retransmitter should have kicked the row to due-now and swept it,
+      // causing _encryptAndSend → relay.send for peerPub.
+      final newFrames = relay.sent.skip(sentBefore).toList();
+      final msgFrames = newFrames
+          .where((f) => f.envelope.first == EnvelopeTag.message)
+          .toList();
+      expect(
+        msgFrames.where((f) => f.to == peerPub),
+        isNotEmpty,
+        reason: 'flushPeerOnReachable must retransmit stranded rows to peerPub',
+      );
+    });
+  });
 }
