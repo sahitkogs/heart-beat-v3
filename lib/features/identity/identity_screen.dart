@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../chat/chat_providers.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/theme_mode_provider.dart';
+import '../contacts/contact_link.dart';
 import '../diagnostics/diagnostics_screen.dart';
 import 'identity_provider.dart';
 
@@ -141,6 +143,18 @@ class _IdentityBodyState extends ConsumerState<_IdentityBody> {
               },
               icon: const Icon(Icons.copy),
               label: const Text('Copy hex'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final uri = ContactLink(widget.pubkeyHex, _initial).toUri();
+                await Share.share(
+                  'Add me on heart•beat: $uri',
+                  subject: 'My heart•beat contact',
+                );
+              },
+              icon: const Icon(Icons.ios_share),
+              label: const Text('Share contact'),
             ),
           ],
         ),
