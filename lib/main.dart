@@ -113,12 +113,15 @@ Future<void> main() async {
         .where((s) => s.isNotEmpty)
         .join('\n');
     if (txt.isNotEmpty) coldLaunchShareText = txt;
-    // Clear the cached initial media so it isn't re-delivered on the next
-    // (non-share) cold launch.
-    await ReceiveSharingIntent.instance.reset();
   } catch (e) {
     // ignore: avoid_print
     print('[main] getInitialMedia error: $e');
+  } finally {
+    // Always clear the cached initial media so it isn't re-delivered on the
+    // next (non-share) cold launch — even if reading/parsing above threw.
+    try {
+      await ReceiveSharingIntent.instance.reset();
+    } catch (_) {/* nothing cached, or platform unsupported */}
   }
 
   runApp(ProviderScope(
@@ -199,6 +202,7 @@ class _HeartbeatV3AppState extends ConsumerState<HeartbeatV3App>
           .where((s) => s.isNotEmpty)
           .join('\n');
       if (txt.isEmpty) return;
+      if (!mounted) return;
       ref.read(pendingShareTextProvider.notifier).state = txt;
       rootNavigatorKey.currentState?.popUntil((r) => r.isFirst);
     });
