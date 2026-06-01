@@ -3392,5 +3392,14 @@ void main() {
         reason: 'flushPeerOnReachable must retransmit stranded rows to peerPub',
       );
     });
+
+    test('is a no-op when attachLayerB has not been called', () async {
+      // Do NOT call service.attachLayerB() — _retransmitter is null.
+      // This must complete without throwing.
+      await expectLater(
+        service.flushPeerOnReachable('peerA'),
+        completes,
+      );
+    });
   });
 }

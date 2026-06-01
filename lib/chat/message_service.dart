@@ -1620,8 +1620,12 @@ class MessageService {
 
   /// Called by the presence poller when [peerPubkeyHex] transitions to online.
   /// Flushes any stranded outbox messages to that peer.
-  Future<void> flushPeerOnReachable(String peerPubkeyHex) =>
-      _retransmitter!.flushForPeer(peerPubkeyHex);
+  /// Called by the presence poller when [peerPubkeyHex] transitions to online.
+  /// Flushes any stranded outbox messages to that peer. No-op if Layer B
+  /// (the retransmitter) isn't attached yet.
+  Future<void> flushPeerOnReachable(String peerPubkeyHex) async {
+    await _retransmitter?.flushForPeer(peerPubkeyHex);
+  }
 
   /// Drop all crypto + bundle-exchange state for [peerPubkeyHex] so a future
   /// re-pairing (delete + re-add, or peer rotating identity by reinstalling)
