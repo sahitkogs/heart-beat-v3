@@ -66,3 +66,6 @@ android/github_secrets.txt
 
 # Play Console service-account key — credential, never commit
 /android/play-publisher-key.json
+
+# Serena MCP tool working directory
+.serena/
