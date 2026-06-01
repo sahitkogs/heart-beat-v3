@@ -85,11 +85,16 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     final chatsAsync = ref.watch(chatsStreamProvider);
     final forwarding = ref.watch(pendingShareTextProvider);
     return PopScope(
-      // Intercept the Android back button when search is open so it
-      // collapses the search bar instead of popping the screen.
-      canPop: !_searchVisible,
+      // Intercept the Android back button when search is open (collapse the
+      // search bar) or while forwarding (cancel forward mode) instead of
+      // popping the screen.
+      canPop: !_searchVisible && forwarding == null,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && _searchVisible) _closeSearch();
+        if (didPop) return;
+        if (_searchVisible) _closeSearch();
+        if (forwarding != null) {
+          ref.read(pendingShareTextProvider.notifier).state = null;
+        }
       },
       child: Scaffold(
         appBar: AppBar(

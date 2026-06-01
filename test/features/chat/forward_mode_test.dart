@@ -53,4 +53,22 @@ void main() {
 
     expect(find.textContaining('Select a chat to forward'), findsNothing);
   });
+
+  testWidgets('close button dismisses the forward banner and clears state',
+      (t) async {
+    final container = ProviderContainer(overrides: _baseOverrides());
+    addTearDown(container.dispose);
+    container.read(pendingShareTextProvider.notifier).state =
+        'Add bob: https://example.com';
+
+    await t.pumpWidget(_harness(container));
+    await t.pump();
+    expect(find.textContaining('Select a chat to forward'), findsOneWidget);
+
+    await t.tap(find.byTooltip('Cancel forwarding'));
+    await t.pump();
+
+    expect(find.textContaining('Select a chat to forward'), findsNothing);
+    expect(container.read(pendingShareTextProvider), isNull);
+  });
 }
