@@ -71,4 +71,22 @@ void main() {
     expect(find.textContaining('Select a chat to forward'), findsNothing);
     expect(container.read(pendingShareTextProvider), isNull);
   });
+
+  testWidgets('new-conversation FAB is hidden while forwarding', (t) async {
+    final container = ProviderContainer(overrides: _baseOverrides());
+    addTearDown(container.dispose);
+
+    // Not forwarding: FAB present.
+    await t.pumpWidget(_harness(container));
+    await t.pump();
+    expect(find.byTooltip('New conversation'), findsOneWidget);
+
+    // Forwarding: FAB hidden so the new-conversation flow (which bypasses the
+    // forward read-and-clear) can't strand the banner.
+    container.read(pendingShareTextProvider.notifier).state =
+        'Add bob: https://example.com';
+    await t.pump(); // rebuild with FAB removed
+    await t.pump(const Duration(seconds: 1)); // let the FAB exit animation finish
+    expect(find.byTooltip('New conversation'), findsNothing);
+  });
 }

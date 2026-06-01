@@ -128,13 +128,18 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
             ),
           ],
         ),
-        floatingActionButton: FloatingActionButton(
-          tooltip: 'New conversation',
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => const SelectContactScreen(),
-          )),
-          child: const Icon(Icons.edit),
-        ),
+        // Hidden while forwarding: the "new conversation" flow
+        // (SelectContactScreen / NewGroupScreen) bypasses the forward read-and-
+        // clear logic, so allowing it here would strand the forward banner.
+        floatingActionButton: forwarding != null
+            ? null
+            : FloatingActionButton(
+                tooltip: 'New conversation',
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const SelectContactScreen(),
+                )),
+                child: const Icon(Icons.edit),
+              ),
         body: Column(
           children: [
             if (forwarding != null)
