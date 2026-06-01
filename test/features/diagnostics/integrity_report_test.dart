@@ -77,16 +77,20 @@ void main() {
   test('sent message with no outbox row is orphaned; one with an outbox row is not',
       () async {
     final now = DateTime.now();
-    // Orphaned: marked sent, no outbox row (sent into the void, unconfirmed).
+    // Orphaned: outbound tick-tracked, marked sent, no outbox row (sent into
+    // the void, unconfirmed). knownTicks=true marks it as a genuine outbound
+    // row that went through the delivery-tracking path.
     await chats.insertMessage(MessagesCompanion.insert(
       id: 'orphan1', chatId: 'peerA', senderPubkeyHex: 'me',
       body: 'lost?', lamport: 1, sentAt: now,
+      knownTicks: const Value(true),
       // deliveryState defaults to sent (index 0).
     ));
     // Not orphaned: sent but still has a live outbox row (being retried).
     await chats.insertMessage(MessagesCompanion.insert(
       id: 'inflight1', chatId: 'peerA', senderPubkeyHex: 'me',
       body: 'retrying', lamport: 2, sentAt: now,
+      knownTicks: const Value(true),
     ));
     await outbox.insert(
       msgId: 'inflight1', peerPubkeyHex: 'peerA', envelopeBytes: [1],
@@ -96,6 +100,7 @@ void main() {
     await chats.insertMessage(MessagesCompanion.insert(
       id: 'delivered1', chatId: 'peerA', senderPubkeyHex: 'me',
       body: 'ok', lamport: 3, sentAt: now,
+      knownTicks: const Value(true),
       deliveryState: const Value(DeliveryState.delivered),
     ));
 
@@ -104,18 +109,58 @@ void main() {
     expect(report.isClean, isFalse);
   });
 
-  test('countOrphanedSent on ChatsDao counts only sent-with-no-outbox', () async {
+  test('inbound (received) rows are never counted as orphanedSent', () async {
     final now = DateTime.now();
+    // An INBOUND message: it came from a peer, so we never sent it, it never
+    // gets an outbox row, and it never advances delivery_state (which defaults
+    // to sent/0). Crucially knownTicks stays false — inbound rows never write
+    // that column. Before the known_ticks gate this row was miscounted as a
+    // huge source of phantom "orphaned sent" entries.
+    await chats.insertMessage(MessagesCompanion.insert(
+      id: 'inbound1', chatId: 'peerA', senderPubkeyHex: 'peerA',
+      body: 'hi from peer', lamport: 1, sentAt: now,
+      receivedAt: Value(now),
+      // deliveryState defaults to sent (0); knownTicks defaults to false.
+    ));
+    expect(await chats.countOrphanedSent(), 0);
+    final report = await computeIntegrityReport(db);
+    expect(report.orphanedSent, 0);
+    expect(report.isClean, isTrue);
+  });
+
+  test('outbound tick-tracked sent-with-no-outbox row IS counted', () async {
+    final now = DateTime.now();
+    await chats.insertMessage(MessagesCompanion.insert(
+      id: 'out1', chatId: 'peerA', senderPubkeyHex: 'me',
+      body: 'real send', lamport: 1, sentAt: now,
+      knownTicks: const Value(true),
+      // deliveryState defaults to sent (0); no outbox row.
+    ));
+    expect(await chats.countOrphanedSent(), 1);
+  });
+
+  test('countOrphanedSent on ChatsDao counts only outbound tick-tracked '
+      'sent-with-no-outbox', () async {
+    final now = DateTime.now();
+    // 'a': outbound, tick-tracked, sent, no outbox row -> counted.
     await chats.insertMessage(MessagesCompanion.insert(
       id: 'a', chatId: 'p', senderPubkeyHex: 'me',
       body: 'x', lamport: 1, sentAt: now,
+      knownTicks: const Value(true),
     ));
+    // 'b': outbound, tick-tracked, read -> not counted.
     await chats.insertMessage(MessagesCompanion.insert(
       id: 'b', chatId: 'p', senderPubkeyHex: 'me',
       body: 'y', lamport: 2, sentAt: now,
+      knownTicks: const Value(true),
       deliveryState: const Value(DeliveryState.read),
     ));
-    // 'a' is sent-with-no-outbox -> counted; 'b' is read -> not counted.
+    // 'c': inbound (knownTicks false), default sent state -> NOT counted.
+    await chats.insertMessage(MessagesCompanion.insert(
+      id: 'c', chatId: 'p', senderPubkeyHex: 'p',
+      body: 'z', lamport: 3, sentAt: now,
+      receivedAt: Value(now),
+    ));
     expect(await chats.countOrphanedSent(), 1);
   });
 }

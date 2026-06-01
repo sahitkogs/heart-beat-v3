@@ -169,12 +169,21 @@ class ChatsDao extends DatabaseAccessor<AppDatabase> with _$ChatsDaoMixin {
   /// read/failed) that have NO corresponding `outbox` row. A live outbox row
   /// means the message is still being retried (= not lost); its absence with a
   /// stuck `sent` state means it was sent into the void and never confirmed.
+  ///
+  /// Gated on `known_ticks = 1`: `delivery_state` DEFAULTS to 0 (sent), so
+  /// without this gate EVERY inbound/received row (which we never sent and
+  /// never advances the column) plus every legacy pre-tick outbound row would
+  /// be miscounted as orphaned. `known_ticks` is true ONLY for genuine
+  /// outbound rows that went through the Phase 10.4.3b delivery-tracking path,
+  /// which is exactly the population this audit is about.
+  ///
   /// Read-only; cross-table `NOT IN` against the outbox table, matching the
   /// raw-SQL style used elsewhere for cross-table reads.
   Future<int> countOrphanedSent() async {
     final row = await customSelect(
       'SELECT COUNT(*) AS c FROM messages '
-      'WHERE delivery_state = ${DeliveryState.sent.index} '
+      'WHERE known_ticks = 1 '
+      'AND delivery_state = ${DeliveryState.sent.index} '
       'AND id NOT IN (SELECT msg_id FROM outbox)',
       readsFrom: {messages, db.outbox},
     ).getSingle();
