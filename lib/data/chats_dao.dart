@@ -164,6 +164,23 @@ class ChatsDao extends DatabaseAccessor<AppDatabase> with _$ChatsDaoMixin {
     return rows.map((r) => r.id).toList();
   }
 
+  /// Records-integrity audit (D1): count outbound messages still in
+  /// `delivery_state == sent` (enum index 0 — never advanced to delivered/
+  /// read/failed) that have NO corresponding `outbox` row. A live outbox row
+  /// means the message is still being retried (= not lost); its absence with a
+  /// stuck `sent` state means it was sent into the void and never confirmed.
+  /// Read-only; cross-table `NOT IN` against the outbox table, matching the
+  /// raw-SQL style used elsewhere for cross-table reads.
+  Future<int> countOrphanedSent() async {
+    final row = await customSelect(
+      'SELECT COUNT(*) AS c FROM messages '
+      'WHERE delivery_state = ${DeliveryState.sent.index} '
+      'AND id NOT IN (SELECT msg_id FROM outbox)',
+      readsFrom: {messages, db.outbox},
+    ).getSingle();
+    return row.read<int>('c');
+  }
+
   /// Mark a batch of messages locally read (sets `read_at = now`). Local-only;
   /// the read receipt back to the peer is sent separately by the debouncer.
   Future<void> markRead(List<String> msgIds) async {

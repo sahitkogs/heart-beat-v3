@@ -38,6 +38,16 @@ class OutboxDao extends DatabaseAccessor<AppDatabase> with _$OutboxDaoMixin {
             ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
           .get();
 
+  /// Records-integrity audit (D1): every pending outbox row whose `createdAt`
+  /// is strictly before [cutoff]. The retransmitter expires rows past its 24h
+  /// `maxAge`, so any row older than the cutoff that still exists is "stuck" —
+  /// the sweeper should have dropped it. Read-only; ordered oldest-first.
+  Future<List<OutboxData>> olderThanStillPending(DateTime cutoff) =>
+      (select(outbox)
+            ..where((t) => t.createdAt.isSmallerThanValue(cutoff))
+            ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+          .get();
+
   Future<void> bumpAttempt(String msgId, DateTime nextRetryAt) async {
     final existing = await findByMsgId(msgId);
     final nextAttempt = (existing?.attempt ?? 0) + 1;
