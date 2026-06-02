@@ -1,5 +1,7 @@
 # Contact Sharing + Deep Links — Implementation Plan
 
+> **STATUS: ✅ SHIPPED 2026-06-01** at `v1.2.0+12`, tag `v1.2.0-contact-sharing` (18 commits on `main`, `30ab05d`…`598ed21`). All 13 tasks done via subagent-driven development; quality gates green (296 tests pass, `flutter analyze` clean apart from the pre-existing `hex_codec` info, debug APK builds with both share plugins coexisting). See the **As-built notes & deviations** section at the bottom for what diverged from this plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add "You" in group settings, share-my-contact + share-a-contact via a single https add-link (landing page → `intent://` → app or Play Store), and make heart•beat a share target that forwards a contact link into a chosen chat.
@@ -40,9 +42,9 @@
 **Files:**
 - Modify: `lib/features/chat/group_settings_screen.dart` (member label ≈ lines 201–211; creator header ≈ line 129)
 
-- [ ] **Step 1: Read the file** to confirm: `final me = ref.watch(identityProvider).valueOrNull?.publicKeyHex ?? '';`, `final memberIsMe = member.memberPubkeyHex == me;`, the `memberLabel = resolveName(...)` line, the `if (memberIsMe) const _Badge(label: 'you')`, and the creator header `creator == me ? 'you' : resolveName(...)`.
+- [x] **Step 1: Read the file** to confirm: `final me = ref.watch(identityProvider).valueOrNull?.publicKeyHex ?? '';`, `final memberIsMe = member.memberPubkeyHex == me;`, the `memberLabel = resolveName(...)` line, the `if (memberIsMe) const _Badge(label: 'you')`, and the creator header `creator == me ? 'you' : resolveName(...)`.
 
-- [ ] **Step 2: Edit the member label** — replace the `resolveName` assignment so self is "You", and remove the now-redundant `'you'` badge:
+- [x] **Step 2: Edit the member label** — replace the `resolveName` assignment so self is "You", and remove the now-redundant `'you'` badge:
 ```dart
 final memberLabel = memberIsMe
     ? 'You'
@@ -50,14 +52,14 @@ final memberLabel = memberIsMe
 ```
 Delete the `if (memberIsMe) const _Badge(label: 'you'),` line (the label now says "You"). If `_Badge` becomes unused after this, leave it (it may be used elsewhere) — only remove the usage.
 
-- [ ] **Step 3: Capitalize the creator header self-ref** — change `creator == me ? 'you'` to `creator == me ? 'You'`.
+- [x] **Step 3: Capitalize the creator header self-ref** — change `creator == me ? 'you'` to `creator == me ? 'You'`.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run: `flutter analyze lib/features/chat/group_settings_screen.dart`
 Expected: no new issues (pre-existing `hex_codec` info elsewhere is fine). Then `flutter test` stays green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add lib/features/chat/group_settings_screen.dart
 git commit -m "ui: show current user as \"You\" in group settings (T1)"
@@ -71,19 +73,19 @@ git commit -m "ui: show current user as \"You\" in group settings (T1)"
 
 **Files:** Modify `pubspec.yaml`
 
-- [ ] **Step 1: Add deps** under `dependencies:` (use latest compatible; these are the known-good majors):
+- [x] **Step 1: Add deps** under `dependencies:` (use latest compatible; these are the known-good majors):
 ```yaml
   share_plus: ^10.1.4
   app_links: ^6.3.2
   receive_sharing_intent: ^1.8.1
 ```
 
-- [ ] **Step 2: Resolve**
+- [x] **Step 2: Resolve**
 
 Run: `flutter pub get`
 Expected: resolves without conflict. If a version is unavailable, pick the nearest resolvable major and note it.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 ```bash
 git add pubspec.yaml pubspec.lock
 git commit -m "deps: share_plus + app_links + receive_sharing_intent (T2)"
@@ -95,7 +97,7 @@ git commit -m "deps: share_plus + app_links + receive_sharing_intent (T2)"
 - Create: `lib/features/contacts/contact_link.dart`
 - Test: `test/features/contacts/contact_link_test.dart`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 ```dart
 import 'package:flutter_test/flutter_test.dart';
 import 'package:app_v3/features/contacts/contact_link.dart';
@@ -143,12 +145,12 @@ void main() {
 }
 ```
 
-- [ ] **Step 2: Run, confirm FAIL**
+- [x] **Step 2: Run, confirm FAIL**
 
 Run: `flutter test test/features/contacts/contact_link_test.dart`
 Expected: FAIL — `ContactLink` undefined.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 ```dart
 /// The add-contact link shared via QR-less channels (WhatsApp, etc.) and
 /// consumed by the heartbeat://add deep link. Carries the pubkey (k) and an
@@ -178,12 +180,12 @@ class ContactLink {
 }
 ```
 
-- [ ] **Step 4: Run, confirm PASS**
+- [x] **Step 4: Run, confirm PASS**
 
 Run: `flutter test test/features/contacts/contact_link_test.dart`
 Expected: PASS (6 tests). Then full `flutter test`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add lib/features/contacts/contact_link.dart test/features/contacts/contact_link_test.dart
 git commit -m "contacts: ContactLink build/parse helper (T3)"
@@ -193,7 +195,7 @@ git commit -m "contacts: ContactLink build/parse helper (T3)"
 
 **Files:** Create `docs/add/index.html`
 
-- [ ] **Step 1: Create the page** (no test — static asset; verified manually in F6):
+- [x] **Step 1: Create the page** (no test — static asset; verified manually in F6):
 ```html
 <!DOCTYPE html>
 <html lang="en">
@@ -242,7 +244,7 @@ git commit -m "contacts: ContactLink build/parse helper (T3)"
 </html>
 ```
 
-- [ ] **Step 2: Commit** (Pages redeploys on push to main:/docs)
+- [x] **Step 2: Commit** (Pages redeploys on push to main:/docs)
 ```bash
 git add docs/add/index.html
 git commit -m "pages: add-contact landing page (intent:// -> app or Play Store) (T4)"
@@ -252,9 +254,9 @@ git commit -m "pages: add-contact landing page (intent:// -> app or Play Store) 
 
 **Files:** Modify `android/app/src/main/AndroidManifest.xml`
 
-- [ ] **Step 1: Read** the `<activity android:name=".MainActivity" …>` block (currently only MAIN/LAUNCHER).
+- [x] **Step 1: Read** the `<activity android:name=".MainActivity" …>` block (currently only MAIN/LAUNCHER).
 
-- [ ] **Step 2: Add two intent-filters** inside the MainActivity `<activity>` element, after the existing MAIN/LAUNCHER filter:
+- [x] **Step 2: Add two intent-filters** inside the MainActivity `<activity>` element, after the existing MAIN/LAUNCHER filter:
 ```xml
             <!-- Add-contact deep link from the landing page -->
             <intent-filter>
@@ -271,12 +273,12 @@ git commit -m "pages: add-contact landing page (intent:// -> app or Play Store) 
             </intent-filter>
 ```
 
-- [ ] **Step 3: Verify it builds**
+- [x] **Step 3: Verify it builds**
 
 Run: `flutter build apk --debug`
 Expected: build succeeds (manifest merges cleanly).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 ```bash
 git add android/app/src/main/AndroidManifest.xml
 git commit -m "android: VIEW (heartbeat://add) + SEND (text/plain) intent-filters (T5)"
@@ -290,9 +292,9 @@ git commit -m "android: VIEW (heartbeat://add) + SEND (text/plain) intent-filter
 
 **Files:** Modify `lib/features/identity/identity_screen.dart` (after the "Copy hex" button ≈ line 144)
 
-- [ ] **Step 1: Read** the Copy-hex button area; confirm `widget.pubkeyHex` (self pubkey) and `_initial` (loaded display name) are in scope, and add imports `package:share_plus/share_plus.dart` + `../contacts/contact_link.dart`.
+- [x] **Step 1: Read** the Copy-hex button area; confirm `widget.pubkeyHex` (self pubkey) and `_initial` (loaded display name) are in scope, and add imports `package:share_plus/share_plus.dart` + `../contacts/contact_link.dart`.
 
-- [ ] **Step 2: Add the button** directly below the Copy-hex button:
+- [x] **Step 2: Add the button** directly below the Copy-hex button:
 ```dart
 const SizedBox(height: 8),
 OutlinedButton.icon(
@@ -307,11 +309,11 @@ OutlinedButton.icon(
 ```
 (Use the real display-name field name found in step 1 if it's not `_initial`.)
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run: `flutter analyze lib/features/identity/identity_screen.dart` → no new issues; `flutter build apk --debug` succeeds.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 ```bash
 git add lib/features/identity/identity_screen.dart
 git commit -m "profile: Share contact button (share my add-link) (T6)"
@@ -323,7 +325,7 @@ git commit -m "profile: Share contact button (share my add-link) (T6)"
 - Modify: `lib/features/contacts/contact_actions.dart` (add helper)
 - Modify: `lib/features/chat/chat_thread_screen.dart` (header bottom sheet ≈ line 332, alongside Rename/Delete)
 
-- [ ] **Step 1: Add the helper** to `contact_actions.dart` (imports `package:share_plus/share_plus.dart`, `../../util/display_name.dart`, `contact_link.dart`, and the `Contact` model already imported):
+- [x] **Step 1: Add the helper** to `contact_actions.dart` (imports `package:share_plus/share_plus.dart`, `../../util/display_name.dart`, `contact_link.dart`, and the `Contact` model already imported):
 ```dart
 /// Shares an add-link for [contact] via the OS share sheet. No dialog — goes
 /// straight to the system chooser (which includes heart•beat itself).
@@ -335,7 +337,7 @@ Future<void> shareContact(BuildContext context, model.Contact contact) async {
 ```
 (Match the file's existing `model.Contact` import alias; if it imports `Contact` unaliased, use that.)
 
-- [ ] **Step 2: Add "Share contact" to the header sheet** — in `chat_thread_screen.dart`'s `showModalBottomSheet` (≈ line 332), add a `ListTile` above Rename:
+- [x] **Step 2: Add "Share contact" to the header sheet** — in `chat_thread_screen.dart`'s `showModalBottomSheet` (≈ line 332), add a `ListTile` above Rename:
 ```dart
 ListTile(
   leading: const Icon(Icons.ios_share),
@@ -348,11 +350,11 @@ ListTile(
 ```
 Use the sheet's actual context variable + the `contact` in scope there (read the surrounding code). Import `../contacts/contact_actions.dart` if not already.
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run: `flutter analyze` → no new issues; `flutter build apk --debug` succeeds.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 ```bash
 git add lib/features/contacts/contact_actions.dart lib/features/chat/chat_thread_screen.dart
 git commit -m "contacts: Share contact action in the header sheet (T7)"
@@ -368,7 +370,7 @@ git commit -m "contacts: Share contact action in the header sheet (T7)"
 - Modify: `lib/features/contacts/add_contact_screen.dart`
 - Test: `test/features/contacts/add_contact_prefill_test.dart`
 
-- [ ] **Step 1: Write the failing widget test**
+- [x] **Step 1: Write the failing widget test**
 ```dart
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -394,12 +396,12 @@ void main() {
 ```
 (Adapt finders to the real widget labels if different — read the paste-stage widgets first.)
 
-- [ ] **Step 2: Run, confirm FAIL** (constructor doesn't accept the args)
+- [x] **Step 2: Run, confirm FAIL** (constructor doesn't accept the args)
 
 Run: `flutter test test/features/contacts/add_contact_prefill_test.dart`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement** — change the constructor + add `initState` prefill:
+- [x] **Step 3: Implement** — change the constructor + add `initState` prefill:
 ```dart
 class AddContactScreen extends ConsumerStatefulWidget {
   const AddContactScreen({super.key, this.initialHex, this.initialName});
@@ -422,11 +424,11 @@ void initState() {
 ```
 (`_stage` defaults to `_Stage.chooseMethod`; setting it here makes the prefilled deep-link land straight on the paste form. Don't break the no-arg path.)
 
-- [ ] **Step 4: Run, confirm PASS**
+- [x] **Step 4: Run, confirm PASS**
 
 Run: `flutter test test/features/contacts/add_contact_prefill_test.dart` then full `flutter test`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add lib/features/contacts/add_contact_screen.dart test/features/contacts/add_contact_prefill_test.dart
 git commit -m "contacts: AddContactScreen initialHex/initialName prefill (T8)"
@@ -436,9 +438,9 @@ git commit -m "contacts: AddContactScreen initialHex/initialName prefill (T8)"
 
 **Files:** Modify `lib/main.dart`
 
-- [ ] **Step 1: Read** `lib/main.dart` — the `rootNavigatorKey`, `_openChatThread`, `StartupRouter`, the `coldLaunchChatId` plumbing into `HeartbeatV3App`, and the `/chats` named route. This is the pattern to mirror.
+- [x] **Step 1: Read** `lib/main.dart` — the `rootNavigatorKey`, `_openChatThread`, `StartupRouter`, the `coldLaunchChatId` plumbing into `HeartbeatV3App`, and the `/chats` named route. This is the pattern to mirror.
 
-- [ ] **Step 2: Cold-launch read** — in `main()` before `runApp`, after the existing notification launch-payload read, add (import `package:app_links/app_links.dart` + `features/contacts/contact_link.dart`):
+- [x] **Step 2: Cold-launch read** — in `main()` before `runApp`, after the existing notification launch-payload read, add (import `package:app_links/app_links.dart` + `features/contacts/contact_link.dart`):
 ```dart
 ContactLink? coldLaunchContact;
 try {
@@ -448,7 +450,7 @@ try {
 ```
 Thread `coldLaunchContact` into `HeartbeatV3App` (a new field) the same way `coldLaunchChatId` is threaded, and into `StartupRouter`.
 
-- [ ] **Step 3: Cold-launch route** — in `StartupRouter`, after the display-name gate and the `pushReplacementNamed('/chats')`, if `coldLaunchContact != null`, also:
+- [x] **Step 3: Cold-launch route** — in `StartupRouter`, after the display-name gate and the `pushReplacementNamed('/chats')`, if `coldLaunchContact != null`, also:
 ```dart
 nav.push(MaterialPageRoute(
   builder: (_) => AddContactScreen(
@@ -459,7 +461,7 @@ nav.push(MaterialPageRoute(
 ```
 (Import `features/contacts/add_contact_screen.dart`. Mirror exactly how the existing `coldLaunchChatId` push is done.)
 
-- [ ] **Step 4: Warm-link listener** — in `_HeartbeatV3AppState.initState` (where the lifecycle observer is added), subscribe once:
+- [x] **Step 4: Warm-link listener** — in `_HeartbeatV3AppState.initState` (where the lifecycle observer is added), subscribe once:
 ```dart
 _linkSub = AppLinks().uriLinkStream.listen((uri) {
   final c = ContactLink.parse(uri);
@@ -471,11 +473,11 @@ _linkSub = AppLinks().uriLinkStream.listen((uri) {
 ```
 Store `StreamSubscription? _linkSub;` and cancel it in `dispose`. (Confirm the exact AppLinks API names against the resolved version — v6 exposes `getInitialLink()` and `uriLinkStream`; if the resolved version differs, e.g. `uriLinkStream` vs `allUriLinkStream`, use the resolved one.)
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `flutter analyze` clean; `flutter build apk --debug` succeeds.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 ```bash
 git add lib/main.dart
 git commit -m "deeplink: route heartbeat://add to prefilled AddContactScreen (cold+warm) (T9)"
@@ -491,7 +493,7 @@ git commit -m "deeplink: route heartbeat://add to prefilled AddContactScreen (co
 - Create: `lib/features/sharing/pending_share_provider.dart`
 - Modify: `lib/features/chat/chat_thread_screen.dart`
 
-- [ ] **Step 1: Create the provider**
+- [x] **Step 1: Create the provider**
 ```dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -501,7 +503,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 final pendingShareTextProvider = StateProvider<String?>((_) => null);
 ```
 
-- [ ] **Step 2: Add `initialComposerText` to ChatThreadScreen** — read the screen's constructor + the composer's `TextEditingController` setup. Add `final String? initialComposerText;` to the constructor, and seed the controller once on first build/init:
+- [x] **Step 2: Add `initialComposerText` to ChatThreadScreen** — read the screen's constructor + the composer's `TextEditingController` setup. Add `final String? initialComposerText;` to the constructor, and seed the controller once on first build/init:
 ```dart
 // in initState (or where the composer controller is created):
 if (widget.initialComposerText != null && widget.initialComposerText!.isNotEmpty) {
@@ -510,9 +512,9 @@ if (widget.initialComposerText != null && widget.initialComposerText!.isNotEmpty
 ```
 (Find the real composer controller — it may live in `Composer`/`composer.dart`; if the controller is owned by a child widget, pass `initialComposerText` down to it. Read `lib/features/chat/composer.dart`.)
 
-- [ ] **Step 3: Verify** `flutter analyze` clean; `flutter test` green.
+- [x] **Step 3: Verify** `flutter analyze` clean; `flutter test` green.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 ```bash
 git add lib/features/sharing/pending_share_provider.dart lib/features/chat/chat_thread_screen.dart lib/features/chat/composer.dart
 git commit -m "sharing: pendingShareTextProvider + ChatThreadScreen composer prefill (T10)"
@@ -524,7 +526,7 @@ git commit -m "sharing: pendingShareTextProvider + ChatThreadScreen composer pre
 - Modify: `lib/features/chat/chat_list_screen.dart`
 - Test: `test/features/chat/forward_mode_test.dart`
 
-- [ ] **Step 1: Write the failing widget test** — when `pendingShareTextProvider` is set, the list shows a forward banner; tapping a chat navigates with the text and clears the provider. (Read `chat_list_screen.dart` for the real tile widget + a way to seed one chat in a test, mirroring any existing chat_list widget test; if seeding a chat is heavy, at minimum assert the banner appears when the provider is set and disappears when cleared.)
+- [x] **Step 1: Write the failing widget test** — when `pendingShareTextProvider` is set, the list shows a forward banner; tapping a chat navigates with the text and clears the provider. (Read `chat_list_screen.dart` for the real tile widget + a way to seed one chat in a test, mirroring any existing chat_list widget test; if seeding a chat is heavy, at minimum assert the banner appears when the provider is set and disappears when cleared.)
 ```dart
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -547,9 +549,9 @@ void main() {
 ```
 (Adapt to the real ChatListScreen construction + any required provider overrides so it builds in a test.)
 
-- [ ] **Step 2: Run, confirm FAIL.**
+- [x] **Step 2: Run, confirm FAIL.**
 
-- [ ] **Step 3: Implement** — in `ChatListScreen.build`, read `final forwarding = ref.watch(pendingShareTextProvider);`. When non-null, render a banner above the list:
+- [x] **Step 3: Implement** — in `ChatListScreen.build`, read `final forwarding = ref.watch(pendingShareTextProvider);`. When non-null, render a banner above the list:
 ```dart
 if (forwarding != null)
   Material(
@@ -580,9 +582,9 @@ onTap: () {
 ```
 (Apply to BOTH direct and group tile taps; use the real navigation the screen already uses.)
 
-- [ ] **Step 4: Run, confirm PASS** then full `flutter test`.
+- [x] **Step 4: Run, confirm PASS** then full `flutter test`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add lib/features/chat/chat_list_screen.dart test/features/chat/forward_mode_test.dart
 git commit -m "sharing: ChatListScreen forward mode (banner + tap-to-forward) (T11)"
@@ -592,7 +594,7 @@ git commit -m "sharing: ChatListScreen forward mode (banner + tap-to-forward) (T
 
 **Files:** Modify `lib/main.dart`
 
-- [ ] **Step 1: Cold-launch read** — in `main()` before `runApp`, read the initial shared text (import `package:receive_sharing_intent/receive_sharing_intent.dart`):
+- [x] **Step 1: Cold-launch read** — in `main()` before `runApp`, read the initial shared text (import `package:receive_sharing_intent/receive_sharing_intent.dart`):
 ```dart
 String? coldLaunchShareText;
 try {
@@ -604,7 +606,7 @@ try {
 ```
 (Confirm the resolved `receive_sharing_intent` API — across versions text arrives via `getInitialMedia()` with `SharedMediaType.text` and the text in `.path`, OR an older `getInitialText()`. Use whatever the resolved version exposes.)
 
-- [ ] **Step 2: Seed the provider on cold launch** — thread `coldLaunchShareText` into the app and, after the first frame / in `StartupRouter`, set `pendingShareTextProvider` so Chats-home opens in forward mode:
+- [x] **Step 2: Seed the provider on cold launch** — thread `coldLaunchShareText` into the app and, after the first frame / in `StartupRouter`, set `pendingShareTextProvider` so Chats-home opens in forward mode:
 ```dart
 if (coldLaunchShareText != null) {
   ref.read(pendingShareTextProvider.notifier).state = coldLaunchShareText;
@@ -612,7 +614,7 @@ if (coldLaunchShareText != null) {
 ```
 (Cold launch already lands on `/chats`; the banner appears because the provider is set. Reset `getInitialMedia` per the plugin's "call once" guidance — call `ReceiveSharingIntent.instance.reset()` after reading if the resolved version requires it.)
 
-- [ ] **Step 3: Warm listener** — in `_HeartbeatV3AppState.initState`, subscribe to the media stream; on text, set the provider + ensure Chats-home is foregrounded:
+- [x] **Step 3: Warm listener** — in `_HeartbeatV3AppState.initState`, subscribe to the media stream; on text, set the provider + ensure Chats-home is foregrounded:
 ```dart
 _shareSub = ReceiveSharingIntent.instance.getMediaStream().listen((media) {
   final txt = media.where((m) => m.type == SharedMediaType.text)
@@ -624,11 +626,11 @@ _shareSub = ReceiveSharingIntent.instance.getMediaStream().listen((media) {
 ```
 Store + cancel `_shareSub` in dispose. (`ref` access in `main.dart`'s app state — use the existing `ref` the lifecycle code already uses, e.g. via `ProviderScope`/`ConsumerState`.)
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run: `flutter analyze` clean; `flutter build apk --debug` succeeds (this confirms both share plugins compile together — watch for the plugin-coexistence note in the spec §5; if the manifest SEND filter conflicts with app_links, gate by intent action).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add lib/main.dart
 git commit -m "sharing: receive_sharing_intent -> forward mode on Chats home (cold+warm) (T12)"
@@ -642,9 +644,9 @@ git commit -m "sharing: receive_sharing_intent -> forward mode on Chats home (co
 
 **Files:** none (verify) + `pubspec.yaml` (version)
 
-- [ ] **Step 1: Quality gates** — `flutter test` (all green incl. new ContactLink/prefill/forward tests), `flutter analyze` (clean apart from the pre-existing `hex_codec` info), `flutter build apk --debug` (succeeds).
+- [x] **Step 1: Quality gates** — `flutter test` (all green incl. new ContactLink/prefill/forward tests), `flutter analyze` (clean apart from the pre-existing `hex_codec` info), `flutter build apk --debug` (succeeds).
 
-- [ ] **Step 2: Two-emulator manual verify** (use the `heart-beat-v3-deploy` loop; boot 2 emulators — NOT 3, per the host limit in `mem:presence-campaign-state`):
+- [x] **Step 2: Two-emulator manual verify** (use the `heart-beat-v3-deploy` loop; boot 2 emulators — NOT 3, per the host limit in `mem:presence-campaign-state`):
   - **F1:** group with self → member row shows "You".
   - **F2:** My Profile → Share contact → share to the *other* emulator (e.g. via a notes app / direct intent) → tap link → landing page → app opens at prefilled Paste → Save adds the sharer. (If cross-app sharing between emulators is awkward, verify the `heartbeat://add?k=&n=` intent directly: `adb -s <emu> shell am start -a android.intent.action.VIEW -d "heartbeat://add?k=<hex>&n=test"` → app opens prefilled.)
   - **F3a:** contact header sheet → Share contact → OS sheet shows the link.
@@ -652,9 +654,9 @@ git commit -m "sharing: receive_sharing_intent -> forward mode on Chats home (co
   - **Not-installed fallback:** open the https link in a browser on a device without the app → Play Store (tester account) or the landing page's manual-code instructions.
   Capture screenshots; log any failures.
 
-- [ ] **Step 3: Bump version** in `pubspec.yaml` (e.g. `1.2.0+12`).
+- [x] **Step 3: Bump version** in `pubspec.yaml` (e.g. `1.2.0+12`).
 
-- [ ] **Step 4: Commit + (optionally) tag/push** — ask the user before tagging/pushing (release action).
+- [x] **Step 4: Commit + (optionally) tag/push** — ask the user before tagging/pushing (release action).
 ```bash
 git add pubspec.yaml
 git commit -m "release: contact sharing + deep links (T13)"
@@ -668,3 +670,26 @@ git commit -m "release: contact sharing + deep links (T13)"
 - **Type consistency:** `ContactLink(pubkeyHex, name)` / `.toUri()` / `.parse(Uri)`; `AddContactScreen(initialHex, initialName)`; `ChatThreadScreen(..., initialComposerText)`; `pendingShareTextProvider` (StateProvider<String?>); `shareContact(context, contact)` — used consistently across tasks.
 - **Implementer must confirm against real code (flagged at point of use):** the group-settings member/creator lines; `identity_screen` display-name field name; the `chat_thread_screen` header-sheet context + `contact` variable; the composer's real `TextEditingController` (possibly in `composer.dart`); `main.dart`'s `coldLaunchChatId` threading + `StartupRouter`; the exact `app_links` and `receive_sharing_intent` APIs of the resolved versions; the chat-tile `onTap` sites (direct + group). Native intent flows (T5/T9/T12) are config + manual-verify, not unit-testable.
 - **Plugin-coexistence risk (T12):** `app_links` (VIEW) + `receive_sharing_intent` (SEND) handle different actions; if a launch-intent conflict surfaces, gate by intent action or use a single native MethodChannel.
+
+---
+
+## As-built notes & deviations (post-implementation, 2026-06-01)
+
+Shipped at `v1.2.0+12`, tag `v1.2.0-contact-sharing`. Resolved dep versions: `share_plus 10.1.4`, `app_links 6.4.1` (v6 API: `getInitialLink()` / `uriLinkStream`), `receive_sharing_intent 1.8.1` (`getInitialMedia()` / `getMediaStream()`, `SharedMediaType.text`, payload in `.path`, plus `reset()`). `share_plus 10.1.4`'s static `Share.share(...)` is NOT deprecated — used as-is. Real call sites confirmed: identity self-pubkey `widget.pubkeyHex` + name `_initial`; `contact_actions.dart` imports `Contact` as `model.Contact`; header sheet context var `sheetCtx`, contact var `peerContact`; composer controller `_controller` lives in `composer.dart` (`_ComposerState`), not the screen; chat tiles `_buildDirectTile` + `_buildGroupTile` both route through a shared `_openThread(context, ref)`.
+
+**Deviations from the plan's reference code (all necessary, all committed):**
+- **`ContactLink.toUri()` encodes with `%20`, not the plan's `Uri.replace(queryParameters:)`.** `Uri.replace` encodes spaces as `+`, which failed the `n=Al%20Ice` test assertion. Final impl builds the URL via `Uri.encodeComponent` + string concat. Behaviorally equivalent; `%20` is more universally compatible. (`529dbc6`, `abc2f6e`.)
+- **`android/build.gradle.kts` gained a JVM-17 hook (T5).** `receive_sharing_intent` (and other plugins) introduced a Java 1.8 vs Kotlin 21 target mismatch that broke `flutter build apk`. Fixed with a `gradle.afterProject` block forcing `JavaVersion.VERSION_17` / `JvmTarget.JVM_17` across non-app subprojects. Bundled into the T5 commit (`2f78dbe`).
+
+**Review fixes (per the planned cadence — T9/T11/T12 + one combined review):**
+- **T9 (`49caee9`):** the cold-launch `getInitialLink()` catch logged the error instead of silently swallowing it, matching the file's other catch blocks.
+- **T11 (`d3a42ab`):** Android back button now clears `pendingShareTextProvider` (via `PopScope`) so forward mode can't get stranded; added a dismiss-path widget test.
+- **T12 (`2ec0777`):** `ReceiveSharingIntent.reset()` moved into a `finally` (so stale initial media can't ghost-trigger forward mode on a later cold launch); added a `mounted` guard before `ref.read` in the warm `getMediaStream()` listener.
+- **Combined review (`fab3001`):** fixed a **stuck-banner bug** — the "new conversation" FAB (→ `SelectContactScreen` / `NewGroupScreen`) bypassed the forward read-and-clear, leaving the banner stranded. The FAB is now hidden while forwarding. Added a regression test. (Round-trip link encoding — `toUri` → landing `intent://` → manifest VIEW → `parse` — was verified end-to-end as sound.)
+
+**Post-release fix — landing-page UA detection (`598ed21`, deployed to Pages):**
+On-device verification surfaced that the link opened the app on the phone but bounced to the Play Store on a Lenovo tablet. Root cause: the tablet's Chrome runs in **desktop-site mode**, so its UA is a plain desktop Linux string (`X11; Linux x86_64`, no "Android"). The page's `/android/i.test(navigator.userAgent)` was false → button pointed at the Play Store and the `intent://` never fired. Fixed `docs/add/index.html` to detect Android via multiple signals: UA string, UA-Client-Hints `platform`, OR touch-capable Linux/X11 that isn't ChromeOS/Windows/Mac (a desktop-mode Android tablet). Genuine desktops still fall through to the Play Store. Verified on the actual tablet: the link now auto-launches the app to the prefilled Add-Contact page (name + pubkey, Save enabled).
+
+**Manual device verification:** owner-run (single host can't keep enough emulators stable). The app-side deep link was confirmed live on the tablet via `adb am start -a VIEW -d "heartbeat://add?k=…&n=…"` (opens prefilled) and via the full browser → landing-page → app flow after the UA fix.
+
+**Caveat unchanged:** the Play-Store fallback only resolves for enrolled testers until a public Play track is published (Internal Testing only). And an in-app browser/webview (vs Chrome) may still ignore `intent://` — opening in Chrome is the robust path.

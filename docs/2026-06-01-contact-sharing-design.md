@@ -1,6 +1,6 @@
 # Contact Sharing + Deep Links — Design
 
-> **Status:** approved 2026-06-01. Spec for the next implementation cycle.
+> **Status:** ✅ **IMPLEMENTED & SHIPPED 2026-06-01** at `v1.2.0+12`, tag `v1.2.0-contact-sharing`. This was the approved spec for the cycle; it held up in implementation. See the implementation plan (`2026-06-01-contact-sharing-plan.md` → "As-built notes & deviations") for the few divergences — notably `ContactLink.toUri()` encoding (`%20` not `+`, §3 below), a gradle JVM-17 fix, and a post-release landing-page UA-detection fix for desktop-mode Android tablets (§4 below).
 > **Repo:** `heart-beat-v3` (Flutter client) + a static landing page on the existing GitHub Pages (`docs/`).
 
 ## 1. Goal
@@ -45,6 +45,8 @@ class ContactLink {
 ```
 Both the https URL (`…/add/?k=&n=`) and the deep link (`heartbeat://add?k=&n=`) carry the same `k`/`n` query params, so `parse` handles both.
 
+> **As-built:** `toUri()` does NOT use `Uri.replace(queryParameters:)` as sketched above — that encodes spaces as `+`, which breaks `n=Al%20Ice`. The shipped impl builds the URL with `Uri.encodeComponent` + string concat so spaces are `%20`. `parse()` is as designed (reads `queryParameters`, lowercases/trims `k`, validates 64-hex, treats empty `n` as null). 6 unit tests cover the round-trip.
+
 ## 4. Landing page — `docs/add/index.html`
 
 Served at `https://sahitkogs.github.io/heart-beat-v3/add/` (Pages already serves `main:/docs`). On load it:
@@ -56,6 +58,8 @@ Served at `https://sahitkogs.github.io/heart-beat-v3/add/` (Pages already serves
    ```
    → app installed: opens via the `heartbeat://add?...` VIEW intent. → not installed: Android follows `browser_fallback_url` to the Play listing.
 4. Non-Android (desktop/iOS): no auto-redirect; show the pubkey hex + a "copy this code into heart•beat → Add contact → Paste hex" instruction (graceful, no dead-end).
+
+> **As-built — Android detection (post-release fix, `598ed21`):** the original `/android/i.test(navigator.userAgent)` check broke on tablets whose Chrome runs in **desktop-site mode** — their UA is a plain desktop Linux string (`X11; Linux x86_64`, no "Android"), so the page treated the tablet as desktop and sent it to the Play Store instead of firing the `intent://`. The shipped page detects Android via multiple signals: UA string, UA-Client-Hints `platform`, OR touch-capable Linux/X11 that isn't ChromeOS/Windows/Mac (a desktop-mode Android tablet). Genuine desktops still fall through to the Play Store. **Known caveat:** an in-app browser/webview (some apps' built-in browsers) may still ignore `intent://`; opening the link in Chrome is the robust path.
 
 **Caveat (documented, non-blocking):** the Play listing is Internal-Testing-only today, so the fallback resolves only for enrolled testers until a public track is published.
 
@@ -159,12 +163,12 @@ Keep `flutter test` green, `flutter analyze` clean, APK builds.
 
 ## 14. Acceptance criteria
 
-- [ ] Group settings shows "You" for the current user (no name, no redundant badge); creator header self-ref says "You".
-- [ ] My Profile "Share contact" opens the OS share sheet with a working `…/add/?k=&n=` link; tapping it on a device **with** the app opens the prefilled Paste screen → Save adds the sharer; **without** the app → Play Store.
-- [ ] Contact action sheet has "Share contact" that shares that contact's link.
-- [ ] heart•beat appears as a share target for text; sharing into it lands on Chats home in forward mode → picking a chat prefills the composer → Send delivers the text.
-- [ ] `ContactLink` + prefill + forward-mode unit/widget tests pass; suite green; analyze clean; APK builds.
-- [ ] Landing page committed under `docs/add/` and live on Pages.
+- [x] Group settings shows "You" for the current user (no name, no redundant badge); creator header self-ref says "You".
+- [x] My Profile "Share contact" opens the OS share sheet with a working `…/add/?k=&n=` link; tapping it on a device **with** the app opens the prefilled Paste screen → Save adds the sharer; **without** the app → Play Store.
+- [x] Contact action sheet has "Share contact" that shares that contact's link.
+- [x] heart•beat appears as a share target for text; sharing into it lands on Chats home in forward mode → picking a chat prefills the composer → Send delivers the text.
+- [x] `ContactLink` + prefill + forward-mode unit/widget tests pass; suite green; analyze clean; APK builds.
+- [x] Landing page committed under `docs/add/` and live on Pages.
 
 ## 15. Follow-ups (not this cycle)
 - Verified App Links (`assetlinks.json`) once a custom domain or root Pages repo exists — removes the landing-page hop.
