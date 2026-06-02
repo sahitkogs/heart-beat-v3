@@ -32,7 +32,17 @@
   var intent = 'intent://add?k=' + encodeURIComponent(k) + '&n=' + encodeURIComponent(n) +
     '#Intent;scheme=heartbeat;package=com.sahitkogs.heartbeat;' +
     'S.browser_fallback_url=' + encodeURIComponent(play) + ';end';
-  var isAndroid = /android/i.test(navigator.userAgent);
+  // Detect Android — including tablets whose Chrome runs in "desktop site"
+  // mode, which strips "Android" from the UA and reports a Linux/X11 desktop
+  // string instead. Such devices are still touch-capable and intent:// works
+  // on them, so treat touch + Linux/X11 (that isn't ChromeOS/Windows/Mac) as
+  // Android. UA-Client-Hints platform is preferred when available.
+  var ua = navigator.userAgent || '';
+  var uaPlatform = (navigator.userAgentData && navigator.userAgentData.platform) || '';
+  var touch = (navigator.maxTouchPoints || 0) > 0 || 'ontouchstart' in window;
+  var isAndroid = /android/i.test(ua) ||
+    /android/i.test(uaPlatform) ||
+    (touch && /Linux|X11/i.test(ua) && !/CrOS|Windows|Macintosh/i.test(ua));
   document.getElementById('open').href = isAndroid ? intent : play;
   if (isAndroid && k) {
     document.getElementById('hint').textContent = 'If nothing happens, tap the button below.';
